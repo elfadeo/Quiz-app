@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+// --- FIREBASE IMPORTS ---
+import { db } from './firebase'; // Ensure you created this file!
+import { collection, addDoc, onSnapshot, query, orderBy } from "firebase/firestore";
 
 // --- DATA & CONSTANTS ---
 const quizData = {
@@ -85,12 +88,78 @@ export default function QuizApp() {
   const [filterCategory, setFilterCategory] = useState('All');
   const timerRef = useRef(null);
 
-  // --- STORAGE & INIT ---
+  // --- FIREBASE REAL-TIME CONNECTION ---
 
   useEffect(() => {
-    loadData();
+    // We query the "scores" collection, ordered by most recent
+    const q = query(collection(db, "scores"), orderBy("timestamp", "desc"));
+    
+    // onSnapshot listens for ANY changes in the database
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const allGames = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+      
+      // 1. Process Leaderboard (Sort by Score desc, then Time asc)
+      const sortedLeaderboard = [...allGames].sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.time - b.time;
+      });
+      setLeaderboard(sortedLeaderboard);
+
+      // 2. Process Player Stats (Aggregate from all games in history)
+      const stats = {};
+      allGames.forEach(game => {
+        if (!stats[game.player]) {
+          stats[game.player] = {
+            totalGames: 0,
+            totalScore: 0,
+            totalPossible: 0,
+            bestScore: 0,
+            totalTime: 0,
+            firstPlayed: game.timestamp,
+            history: [],
+            categories: {}
+          };
+        }
+        
+        const p = stats[game.player];
+        p.totalGames++;
+        p.totalScore += game.score;
+        p.totalPossible += game.total;
+        p.totalTime += game.time;
+        // Keep older timestamp as "firstPlayed"
+        if (new Date(game.timestamp) < new Date(p.firstPlayed)) {
+           p.firstPlayed = game.timestamp;
+        }
+        p.bestScore = Math.max(p.bestScore, game.percentage);
+        p.history.push(game);
+        
+        // Category breakdown
+        if (!p.categories[game.category]) {
+           p.categories[game.category] = { games: 0, totalScore: 0, totalPossible: 0, bestScore: 0, totalTime: 0 };
+        }
+        const c = p.categories[game.category];
+        c.games++;
+        c.totalScore += game.score;
+        c.totalPossible += game.total;
+        c.bestScore = Math.max(c.bestScore, game.percentage);
+        c.totalTime += game.time;
+      });
+
+      // Calculate Averages
+      Object.values(stats).forEach(p => {
+        p.averageTime = Math.round(p.totalTime / p.totalGames);
+        Object.values(p.categories).forEach(c => {
+           c.averageTime = Math.round(c.totalTime / c.games);
+        });
+      });
+
+      setPlayerStats(stats);
+    });
+
+    return () => unsubscribe();
   }, []);
 
+  // Timer Logic
   useEffect(() => {
     if (screen === 'quiz' && !showFeedback) {
       timerRef.current = setInterval(() => {
@@ -107,28 +176,6 @@ export default function QuizApp() {
       return () => clearInterval(timerRef.current);
     }
   }, [screen, currentQuestionIndex, showFeedback]);
-
-  // Changed to standard localStorage
-  function loadData() {
-    try {
-      const lbData = localStorage.getItem('quiz_leaderboard');
-      if (lbData) setLeaderboard(JSON.parse(lbData));
-
-      const psData = localStorage.getItem('quiz_player_stats');
-      if (psData) setPlayerStats(JSON.parse(psData));
-    } catch (e) {
-      console.log('Error loading data', e);
-    }
-  }
-
-  function saveData(newLeaderboard, newStats) {
-    try {
-      localStorage.setItem('quiz_leaderboard', JSON.stringify(newLeaderboard));
-      localStorage.setItem('quiz_player_stats', JSON.stringify(newStats));
-    } catch (e) {
-      console.error('Failed to save data:', e);
-    }
-  }
 
   // --- ACTIONS ---
 
@@ -161,7 +208,6 @@ export default function QuizApp() {
 
     const questions = quizData[selectedCategory];
     const currentQ = questions[currentQuestionIndex];
-    // -1 checks for timeout
     const isCorrect = answerIndex !== -1 && answerIndex === currentQ.correct;
     
     if (isCorrect) {
@@ -180,14 +226,14 @@ export default function QuizApp() {
     }, 1200);
   }
 
-  function saveScoreAndShowLeaderboard() {
+  // --- SAVE TO FIREBASE ---
+  async function saveScoreAndShowLeaderboard() {
     const questions = quizData[selectedCategory];
     const timeTaken = Math.round((Date.now() - startTime) / 1000);
     const timestamp = new Date().toISOString();
     const percentage = Math.round((score / questions.length) * 100);
     
     const entry = {
-      id: Date.now().toString(),
       player: playerName,
       category: selectedCategory,
       score: score,
@@ -197,65 +243,14 @@ export default function QuizApp() {
       percentage: percentage
     };
 
-    const newLeaderboard = [...leaderboard, entry];
-    // Sort by Score (desc), then Time (asc)
-    newLeaderboard.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.time - b.time;
-    });
-    
-    const trimmed = newLeaderboard.slice(0, 100);
-
-    // Update player stats
-    const newStats = { ...playerStats };
-    if (!newStats[playerName]) {
-      newStats[playerName] = {
-        totalGames: 0,
-        totalScore: 0,
-        totalPossible: 0,
-        bestScore: 0,
-        averageTime: 0,
-        totalTime: 0,
-        categories: {},
-        history: [],
-        firstPlayed: timestamp
-      };
+    try {
+      // Add to Database - The useEffect listener will automatically update the screen
+      await addDoc(collection(db, "scores"), entry);
+      setScreen('leaderboard');
+    } catch (e) {
+      console.error("Error saving to Firebase", e);
+      alert("Could not save score. Please check your internet connection.");
     }
-
-    const stats = newStats[playerName];
-    stats.totalGames += 1;
-    stats.totalScore += score;
-    stats.totalPossible += questions.length;
-    stats.bestScore = Math.max(stats.bestScore, percentage);
-    stats.totalTime += timeTaken;
-    stats.averageTime = Math.round(stats.totalTime / stats.totalGames);
-    
-    if (!stats.categories[selectedCategory]) {
-      stats.categories[selectedCategory] = {
-        games: 0,
-        totalScore: 0,
-        totalPossible: 0,
-        bestScore: 0,
-        averageTime: 0,
-        totalTime: 0
-      };
-    }
-    
-    const catStats = stats.categories[selectedCategory];
-    catStats.games += 1;
-    catStats.totalScore += score;
-    catStats.totalPossible += questions.length;
-    catStats.bestScore = Math.max(catStats.bestScore, percentage);
-    catStats.totalTime += timeTaken;
-    catStats.averageTime = Math.round(catStats.totalTime / catStats.games);
-    
-    stats.history.unshift(entry);
-    if (stats.history.length > 50) stats.history = stats.history.slice(0, 50);
-
-    setLeaderboard(trimmed);
-    setPlayerStats(newStats);
-    saveData(trimmed, newStats);
-    setScreen('leaderboard');
   }
 
   function resetToCategory() {
@@ -275,24 +270,25 @@ export default function QuizApp() {
 
   // --- HELPERS ---
   
-  // Calculate players array from stats object
   const playersList = Object.entries(playerStats).map(([name, stats]) => ({
     name,
     ...stats
   }));
 
   function formatDate(isoString) {
+    if(!isoString) return '';
     const date = new Date(isoString);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + 
            ' ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   }
 
   function formatDateShort(isoString) {
+    if(!isoString) return '';
     const date = new Date(isoString);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
 
-  // --- RENDER ---
+  // --- RENDER (Views) ---
 
   // 1. HOME
   if (screen === 'home') {
@@ -392,6 +388,7 @@ export default function QuizApp() {
 
   // 3. QUIZ
   if (screen === 'quiz') {
+    if (!quizData[selectedCategory]) return <div>Category not found</div>;
     const questions = quizData[selectedCategory];
     const q = questions[currentQuestionIndex];
     const progress = ((currentQuestionIndex) / questions.length) * 100;
@@ -527,7 +524,7 @@ export default function QuizApp() {
     );
   }
 
-  // 5. LEADERBOARD (Recent high scores)
+  // 5. LEADERBOARD
   if (screen === 'leaderboard') {
     const categoriesList = ['All', 'Math', 'English', 'ICT', 'Science', 'History'];
     const filtered = filterCategory === 'All' 
@@ -543,8 +540,8 @@ export default function QuizApp() {
           <div className="bg-white rounded-2xl shadow-xl p-8">
             <div className="text-center mb-6">
               <div className="text-5xl mb-3">🏆</div>
-              <h2 className="text-2xl font-bold mb-1 text-slate-800">High Scores</h2>
-              <p className="text-slate-600">Top performances by category</p>
+              <h2 className="text-2xl font-bold mb-1 text-slate-800">Global High Scores</h2>
+              <p className="text-slate-600">Top performances from around the world</p>
             </div>
 
             <div className="flex flex-wrap gap-2 justify-center mb-6">
@@ -576,7 +573,7 @@ export default function QuizApp() {
                  </div>
                 {topScores.map((entry, i) => (
                   <div key={i} className="grid grid-cols-4 items-center px-4 py-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-                    <div className="col-span-1 font-bold text-slate-800 truncate" onClick={() => viewPlayerProfile(entry.player)} title="View Profile" style={{cursor: 'pointer'}}>
+                    <div className="col-span-1 font-bold text-slate-800 truncate cursor-pointer" onClick={() => viewPlayerProfile(entry.player)}>
                        {i+1}. {entry.player}
                     </div>
                     <div className="col-span-1 text-center">
@@ -604,7 +601,7 @@ export default function QuizApp() {
     );
   }
 
-  // 6. PLAYERS LIST (Directory)
+  // 6. PLAYERS LIST
   if (screen === 'players') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6 overflow-auto">
@@ -676,7 +673,6 @@ export default function QuizApp() {
   if (screen === 'player-profile' && selectedPlayer) {
     const stats = playerStats[selectedPlayer];
     
-    // Safety check if player not found
     if (!stats) {
       return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6 flex items-center justify-center">
@@ -695,12 +691,10 @@ export default function QuizApp() {
     }
 
     const avgScore = stats.totalPossible > 0 ? Math.round((stats.totalScore / stats.totalPossible) * 100) : 0;
-    const recentGames = stats.history.slice(0, 10);
-
+    
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6 overflow-auto">
         <div className="max-w-4xl mx-auto space-y-6">
-          {/* Player Header */}
           <div className="bg-white rounded-2xl shadow-xl p-8">
             <div className="text-center mb-6">
               <div className="text-6xl mb-3">👤</div>
@@ -708,7 +702,6 @@ export default function QuizApp() {
               <p className="text-slate-600">Member since {formatDateShort(stats.firstPlayed)}</p>
             </div>
 
-            {/* Overall Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <div className="text-center p-4 bg-blue-50 rounded-xl">
                 <div className="text-3xl font-bold text-slate-800">{stats.totalGames}</div>
@@ -728,82 +721,28 @@ export default function QuizApp() {
               </div>
             </div>
 
-            {/* Category Breakdown */}
-            <div>
-              <h3 className="font-bold text-lg text-slate-800 mb-3">Performance by Category</h3>
-              <div className="space-y-3">
-                {Object.entries(stats.categories).map(([cat, catData]) => {
-                  const catAvg = catData.totalPossible > 0 ? Math.round((catData.totalScore / catData.totalPossible) * 100) : 0;
-                  return (
-                    <div key={cat} className="p-4 border-2 rounded-lg" style={{ borderColor: SECONDARY }}>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="font-semibold text-slate-800">{cat}</div>
-                        <div className="text-sm text-slate-600">{catData.games} game{catData.games !== 1 ? 's' : ''}</div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-3 text-center text-sm">
-                        <div>
-                          <div className="text-slate-500">Average</div>
-                          <div className="font-bold text-slate-800">{catAvg}%</div>
-                        </div>
-                        <div>
-                          <div className="text-slate-500">Best</div>
-                          <div className="font-bold text-slate-800">{catData.bestScore}%</div>
-                        </div>
-                        <div>
-                          <div className="text-slate-500">Avg Time</div>
-                          <div className="font-bold text-slate-800">{catData.averageTime}s</div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Recent Games */}
-          <div className="bg-white rounded-2xl shadow-xl p-8">
-            <h3 className="font-bold text-lg text-slate-800 mb-4">Recent Games</h3>
-            {recentGames.length === 0 ? (
-              <p className="text-slate-500 text-center py-4">No games yet</p>
-            ) : (
-              <div className="space-y-3">
-                {recentGames.map((game) => (
-                  <div key={game.id} className="p-4 border-2 rounded-lg" style={{ borderColor: SECONDARY }}>
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <div className="font-semibold text-slate-800">{game.category}</div>
-                        <div className="text-xs text-slate-500">{formatDate(game.timestamp)}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold text-xl text-slate-800">{game.score}/{game.total}</div>
-                        <div className="text-sm text-slate-500">{game.percentage}%</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                      <span>⏱️ {game.time}s</span>
-                    </div>
+            <h3 className="font-bold text-lg mb-3">History</h3>
+            <div className="space-y-3">
+               {stats.history.slice().sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 10).map((game, i) => (
+                  <div key={i} className="p-3 border rounded-lg flex justify-between items-center">
+                     <div>
+                        <span className="font-bold block">{game.category}</span>
+                        <span className="text-xs text-gray-500">{formatDate(game.timestamp)}</span>
+                     </div>
+                     <div className="text-right">
+                        <div className="font-bold">{game.score}/{game.total}</div>
+                        <div className="text-xs text-gray-500">{game.percentage}%</div>
+                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Back Buttons */}
-          <div className="flex gap-3">
+               ))}
+            </div>
+            
             <button
-              onClick={() => setScreen('players')}
-              className="flex-1 py-3 rounded-lg font-semibold border-2 bg-white transition-transform hover:scale-105"
-              style={{ color: SECONDARY, borderColor: SECONDARY }}
+                onClick={() => setScreen('players')}
+                className="w-full mt-6 py-3 rounded-lg font-semibold border-2"
+                style={{ color: SECONDARY, borderColor: SECONDARY }}
             >
-              👥 All Players
-            </button>
-            <button
-              onClick={() => setScreen('home')}
-              className="flex-1 py-3 rounded-lg font-semibold text-white transition-transform hover:scale-105"
-              style={{ backgroundColor: PRIMARY }}
-            >
-              🏠 Home
+                ← Back to Players
             </button>
           </div>
         </div>
@@ -811,6 +750,5 @@ export default function QuizApp() {
     );
   }
 
-  // Fallback (should not happen)
   return <div>Loading...</div>;
 }
