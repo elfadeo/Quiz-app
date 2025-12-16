@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+// --- DATA & CONSTANTS ---
 const quizData = {
   Math: [
     { question: "What is 15 × 8?", options: ["120","115","125","130"], correct: 0 },
@@ -79,21 +80,24 @@ export default function QuizApp() {
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [nameError, setNameError] = useState(false);
+  const [playerStats, setPlayerStats] = useState({});
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [filterCategory, setFilterCategory] = useState('All');
   const timerRef = useRef(null);
 
-  // Load leaderboard on mount
+  // --- STORAGE & INIT ---
+
   useEffect(() => {
-    loadLeaderboard();
+    loadData();
   }, []);
 
-  // Timer effect
   useEffect(() => {
     if (screen === 'quiz' && !showFeedback) {
       timerRef.current = setInterval(() => {
         setTimeLeft(prev => {
           if (prev <= 1) {
             clearInterval(timerRef.current);
-            handleAnswer(-1);
+            handleAnswer(-1); // Time's up
             return 0;
           }
           return prev - 1;
@@ -104,24 +108,29 @@ export default function QuizApp() {
     }
   }, [screen, currentQuestionIndex, showFeedback]);
 
-  async function loadLeaderboard() {
+  // Changed to standard localStorage
+  function loadData() {
     try {
-      const result = await window.storage.get('quiz_leaderboard', true);
-      if (result && result.value) {
-        setLeaderboard(JSON.parse(result.value));
-      }
+      const lbData = localStorage.getItem('quiz_leaderboard');
+      if (lbData) setLeaderboard(JSON.parse(lbData));
+
+      const psData = localStorage.getItem('quiz_player_stats');
+      if (psData) setPlayerStats(JSON.parse(psData));
     } catch (e) {
-      console.log('No leaderboard data yet');
+      console.log('Error loading data', e);
     }
   }
 
-  async function saveLeaderboard(data) {
+  function saveData(newLeaderboard, newStats) {
     try {
-      await window.storage.set('quiz_leaderboard', JSON.stringify(data), true);
+      localStorage.setItem('quiz_leaderboard', JSON.stringify(newLeaderboard));
+      localStorage.setItem('quiz_player_stats', JSON.stringify(newStats));
     } catch (e) {
-      console.error('Failed to save leaderboard:', e);
+      console.error('Failed to save data:', e);
     }
   }
+
+  // --- ACTIONS ---
 
   function handleStartQuiz() {
     if (!playerName.trim()) {
@@ -152,7 +161,8 @@ export default function QuizApp() {
 
     const questions = quizData[selectedCategory];
     const currentQ = questions[currentQuestionIndex];
-    const isCorrect = answerIndex === currentQ.correct;
+    // -1 checks for timeout
+    const isCorrect = answerIndex !== -1 && answerIndex === currentQ.correct;
     
     if (isCorrect) {
       setScore(prev => prev + 1);
@@ -170,27 +180,81 @@ export default function QuizApp() {
     }, 1200);
   }
 
-  async function saveScoreAndShowLeaderboard() {
+  function saveScoreAndShowLeaderboard() {
     const questions = quizData[selectedCategory];
     const timeTaken = Math.round((Date.now() - startTime) / 1000);
+    const timestamp = new Date().toISOString();
+    const percentage = Math.round((score / questions.length) * 100);
+    
     const entry = {
+      id: Date.now().toString(),
       player: playerName,
       category: selectedCategory,
       score: score,
       total: questions.length,
       time: timeTaken,
-      at: new Date().toISOString()
+      timestamp: timestamp,
+      percentage: percentage
     };
 
     const newLeaderboard = [...leaderboard, entry];
+    // Sort by Score (desc), then Time (asc)
     newLeaderboard.sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       return a.time - b.time;
     });
     
     const trimmed = newLeaderboard.slice(0, 100);
+
+    // Update player stats
+    const newStats = { ...playerStats };
+    if (!newStats[playerName]) {
+      newStats[playerName] = {
+        totalGames: 0,
+        totalScore: 0,
+        totalPossible: 0,
+        bestScore: 0,
+        averageTime: 0,
+        totalTime: 0,
+        categories: {},
+        history: [],
+        firstPlayed: timestamp
+      };
+    }
+
+    const stats = newStats[playerName];
+    stats.totalGames += 1;
+    stats.totalScore += score;
+    stats.totalPossible += questions.length;
+    stats.bestScore = Math.max(stats.bestScore, percentage);
+    stats.totalTime += timeTaken;
+    stats.averageTime = Math.round(stats.totalTime / stats.totalGames);
+    
+    if (!stats.categories[selectedCategory]) {
+      stats.categories[selectedCategory] = {
+        games: 0,
+        totalScore: 0,
+        totalPossible: 0,
+        bestScore: 0,
+        averageTime: 0,
+        totalTime: 0
+      };
+    }
+    
+    const catStats = stats.categories[selectedCategory];
+    catStats.games += 1;
+    catStats.totalScore += score;
+    catStats.totalPossible += questions.length;
+    catStats.bestScore = Math.max(catStats.bestScore, percentage);
+    catStats.totalTime += timeTaken;
+    catStats.averageTime = Math.round(catStats.totalTime / catStats.games);
+    
+    stats.history.unshift(entry);
+    if (stats.history.length > 50) stats.history = stats.history.slice(0, 50);
+
     setLeaderboard(trimmed);
-    await saveLeaderboard(trimmed);
+    setPlayerStats(newStats);
+    saveData(trimmed, newStats);
     setScreen('leaderboard');
   }
 
@@ -204,7 +268,33 @@ export default function QuizApp() {
     setScreen('category');
   }
 
-  // Home Screen
+  function viewPlayerProfile(player) {
+    setSelectedPlayer(player);
+    setScreen('player-profile');
+  }
+
+  // --- HELPERS ---
+  
+  // Calculate players array from stats object
+  const playersList = Object.entries(playerStats).map(([name, stats]) => ({
+    name,
+    ...stats
+  }));
+
+  function formatDate(isoString) {
+    const date = new Date(isoString);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + 
+           ' ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function formatDateShort(isoString) {
+    const date = new Date(isoString);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
+  // --- RENDER ---
+
+  // 1. HOME
   if (screen === 'home') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-6">
@@ -239,7 +329,15 @@ export default function QuizApp() {
               className="w-full py-3 rounded-lg font-semibold border-2 transition-transform hover:scale-105"
               style={{ color: SECONDARY, borderColor: SECONDARY }}
             >
-              View Leaderboard
+              🏆 View High Scores
+            </button>
+
+            <button
+              onClick={() => setScreen('players')}
+              className="w-full py-3 rounded-lg font-semibold border-2 transition-transform hover:scale-105"
+              style={{ color: SECONDARY, borderColor: SECONDARY }}
+            >
+              👥 View All Players
             </button>
           </div>
         </div>
@@ -247,7 +345,7 @@ export default function QuizApp() {
     );
   }
 
-  // Category Screen
+  // 2. CATEGORY SELECT
   if (screen === 'category') {
     const categories = [
       { name: 'Math', icon: '🔢' },
@@ -262,7 +360,7 @@ export default function QuizApp() {
         <div className="max-w-4xl mx-auto">
           <div className="bg-white rounded-2xl shadow-xl p-8">
             <h2 className="text-2xl font-bold text-center mb-2 text-slate-800">Select a Category</h2>
-            <p className="text-slate-600 text-center mb-6">Choose a subject</p>
+            <p className="text-slate-600 text-center mb-6">Choose a subject, {playerName}</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
               {categories.map(cat => (
@@ -292,7 +390,7 @@ export default function QuizApp() {
     );
   }
 
-  // Quiz Screen
+  // 3. QUIZ
   if (screen === 'quiz') {
     const questions = quizData[selectedCategory];
     const q = questions[currentQuestionIndex];
@@ -373,7 +471,7 @@ export default function QuizApp() {
     );
   }
 
-  // Results Screen
+  // 4. RESULTS
   if (screen === 'results') {
     const questions = quizData[selectedCategory];
     const percent = Math.round((score / questions.length) * 100);
@@ -429,46 +527,65 @@ export default function QuizApp() {
     );
   }
 
-  // Leaderboard Screen
+  // 5. LEADERBOARD (Recent high scores)
   if (screen === 'leaderboard') {
-    const top = leaderboard.slice(0, 20);
+    const categoriesList = ['All', 'Math', 'English', 'ICT', 'Science', 'History'];
+    const filtered = filterCategory === 'All' 
+      ? leaderboard 
+      : leaderboard.filter(e => e.category === filterCategory);
+    
+    // Top 20 scores
+    const topScores = filtered.slice(0, 20);
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6 overflow-auto">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-4xl mx-auto">
           <div className="bg-white rounded-2xl shadow-xl p-8">
             <div className="text-center mb-6">
               <div className="text-5xl mb-3">🏆</div>
-              <h2 className="text-2xl font-bold mb-1 text-slate-800">Leaderboard</h2>
-              <p className="text-slate-600">Top performers</p>
+              <h2 className="text-2xl font-bold mb-1 text-slate-800">High Scores</h2>
+              <p className="text-slate-600">Top performances by category</p>
             </div>
 
-            {top.length === 0 ? (
+            <div className="flex flex-wrap gap-2 justify-center mb-6">
+              {categoriesList.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setFilterCategory(cat)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                    filterCategory === cat ? 'bg-blue-600 text-white' : 'bg-gray-100 text-slate-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {topScores.length === 0 ? (
               <div className="text-center py-10">
-                <div className="text-4xl mb-2">🎯</div>
-                <p className="text-slate-500">No scores yet. Be the first to play!</p>
+                <p className="text-slate-500">No scores yet for this category!</p>
               </div>
             ) : (
-              <div className="space-y-3 mb-6">
-                {top.map((e, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between p-4 rounded-lg border-2"
-                    style={{ borderColor: SECONDARY }}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="text-2xl font-bold w-8">
-                        {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`}
-                      </div>
-                      <div>
-                        <div className="font-semibold text-slate-800">{e.player}</div>
-                        <div className="text-sm text-slate-500">{e.category} • {e.time}s</div>
-                      </div>
+              <div className="space-y-2 mb-6">
+                 {/* Header Row */}
+                 <div className="grid grid-cols-4 font-semibold text-slate-500 text-sm px-4 pb-2 border-b">
+                    <div className="col-span-1">Player</div>
+                    <div className="col-span-1 text-center">Score</div>
+                    <div className="col-span-1 text-center">Time</div>
+                    <div className="col-span-1 text-right">Date</div>
+                 </div>
+                {topScores.map((entry, i) => (
+                  <div key={i} className="grid grid-cols-4 items-center px-4 py-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                    <div className="col-span-1 font-bold text-slate-800 truncate" onClick={() => viewPlayerProfile(entry.player)} title="View Profile" style={{cursor: 'pointer'}}>
+                       {i+1}. {entry.player}
                     </div>
-                    <div className="text-right">
-                      <div className="font-bold text-xl text-slate-800">{e.score}/{e.total}</div>
-                      <div className="text-sm text-slate-500">{Math.round((e.score / e.total) * 100)}%</div>
+                    <div className="col-span-1 text-center">
+                        <span className="inline-block px-2 py-1 bg-green-100 text-green-700 rounded-md text-sm font-bold">
+                            {entry.score}/{entry.total}
+                        </span>
                     </div>
+                    <div className="col-span-1 text-center text-sm text-slate-600">{entry.time}s</div>
+                    <div className="col-span-1 text-right text-xs text-slate-400">{formatDateShort(entry.timestamp)}</div>
                   </div>
                 ))}
               </div>
@@ -487,5 +604,213 @@ export default function QuizApp() {
     );
   }
 
-  return null;
+  // 6. PLAYERS LIST (Directory)
+  if (screen === 'players') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6 overflow-auto">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="text-center mb-6">
+              <div className="text-5xl mb-3">👥</div>
+              <h2 className="text-2xl font-bold mb-1 text-slate-800">All Players</h2>
+              <p className="text-slate-600">{playersList.length} player{playersList.length !== 1 ? 's' : ''} registered</p>
+            </div>
+
+            {playersList.length === 0 ? (
+              <div className="text-center py-10">
+                <p className="text-slate-500">No players yet!</p>
+              </div>
+            ) : (
+              <div className="space-y-3 mb-6">
+                {playersList.map((p, i) => {
+                  const avgScore = p.totalPossible > 0 ? Math.round((p.totalScore / p.totalPossible) * 100) : 0;
+                  return (
+                    <div
+                      key={p.name}
+                      onClick={() => viewPlayerProfile(p.name)}
+                      className="p-4 rounded-lg border-2 hover:shadow-md transition-shadow cursor-pointer"
+                      style={{ borderColor: SECONDARY }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="font-semibold text-lg text-slate-800">{p.name}</div>
+                        <div className="text-sm text-slate-500">Joined {formatDateShort(p.firstPlayed)}</div>
+                      </div>
+                      <div className="grid grid-cols-4 gap-3 text-center">
+                        <div className="bg-blue-50 rounded-lg p-2">
+                          <div className="text-xs text-slate-500">Games</div>
+                          <div className="font-bold text-slate-800">{p.totalGames}</div>
+                        </div>
+                        <div className="bg-green-50 rounded-lg p-2">
+                          <div className="text-xs text-slate-500">Avg Score</div>
+                          <div className="font-bold text-slate-800">{avgScore}%</div>
+                        </div>
+                        <div className="bg-purple-50 rounded-lg p-2">
+                          <div className="text-xs text-slate-500">Best</div>
+                          <div className="font-bold text-slate-800">{p.bestScore}%</div>
+                        </div>
+                        <div className="bg-orange-50 rounded-lg p-2">
+                          <div className="text-xs text-slate-500">Avg Time</div>
+                          <div className="font-bold text-slate-800">{p.averageTime}s</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <button
+              onClick={() => setScreen('home')}
+              className="w-full py-3 rounded-lg font-semibold border-2 transition-transform hover:scale-105"
+              style={{ color: SECONDARY, borderColor: SECONDARY }}
+            >
+              ← Back to Home
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 7. PLAYER PROFILE
+  if (screen === 'player-profile' && selectedPlayer) {
+    const stats = playerStats[selectedPlayer];
+    
+    // Safety check if player not found
+    if (!stats) {
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6 flex items-center justify-center">
+          <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
+            <p className="text-slate-600">Player not found</p>
+            <button
+              onClick={() => setScreen('players')}
+              className="mt-4 px-6 py-2 rounded-lg font-semibold border-2"
+              style={{ color: SECONDARY, borderColor: SECONDARY }}
+            >
+              ← Back
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    const avgScore = stats.totalPossible > 0 ? Math.round((stats.totalScore / stats.totalPossible) * 100) : 0;
+    const recentGames = stats.history.slice(0, 10);
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6 overflow-auto">
+        <div className="max-w-4xl mx-auto space-y-6">
+          {/* Player Header */}
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="text-center mb-6">
+              <div className="text-6xl mb-3">👤</div>
+              <h2 className="text-3xl font-bold text-slate-800 mb-1">{selectedPlayer}</h2>
+              <p className="text-slate-600">Member since {formatDateShort(stats.firstPlayed)}</p>
+            </div>
+
+            {/* Overall Stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="text-center p-4 bg-blue-50 rounded-xl">
+                <div className="text-3xl font-bold text-slate-800">{stats.totalGames}</div>
+                <div className="text-sm text-slate-600">Total Games</div>
+              </div>
+              <div className="text-center p-4 bg-green-50 rounded-xl">
+                <div className="text-3xl font-bold text-slate-800">{avgScore}%</div>
+                <div className="text-sm text-slate-600">Average Score</div>
+              </div>
+              <div className="text-center p-4 bg-purple-50 rounded-xl">
+                <div className="text-3xl font-bold text-slate-800">{stats.bestScore}%</div>
+                <div className="text-sm text-slate-600">Best Score</div>
+              </div>
+              <div className="text-center p-4 bg-orange-50 rounded-xl">
+                <div className="text-3xl font-bold text-slate-800">{stats.averageTime}s</div>
+                <div className="text-sm text-slate-600">Avg Time</div>
+              </div>
+            </div>
+
+            {/* Category Breakdown */}
+            <div>
+              <h3 className="font-bold text-lg text-slate-800 mb-3">Performance by Category</h3>
+              <div className="space-y-3">
+                {Object.entries(stats.categories).map(([cat, catData]) => {
+                  const catAvg = catData.totalPossible > 0 ? Math.round((catData.totalScore / catData.totalPossible) * 100) : 0;
+                  return (
+                    <div key={cat} className="p-4 border-2 rounded-lg" style={{ borderColor: SECONDARY }}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="font-semibold text-slate-800">{cat}</div>
+                        <div className="text-sm text-slate-600">{catData.games} game{catData.games !== 1 ? 's' : ''}</div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 text-center text-sm">
+                        <div>
+                          <div className="text-slate-500">Average</div>
+                          <div className="font-bold text-slate-800">{catAvg}%</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-500">Best</div>
+                          <div className="font-bold text-slate-800">{catData.bestScore}%</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-500">Avg Time</div>
+                          <div className="font-bold text-slate-800">{catData.averageTime}s</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Games */}
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <h3 className="font-bold text-lg text-slate-800 mb-4">Recent Games</h3>
+            {recentGames.length === 0 ? (
+              <p className="text-slate-500 text-center py-4">No games yet</p>
+            ) : (
+              <div className="space-y-3">
+                {recentGames.map((game) => (
+                  <div key={game.id} className="p-4 border-2 rounded-lg" style={{ borderColor: SECONDARY }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <div className="font-semibold text-slate-800">{game.category}</div>
+                        <div className="text-xs text-slate-500">{formatDate(game.timestamp)}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-xl text-slate-800">{game.score}/{game.total}</div>
+                        <div className="text-sm text-slate-500">{game.percentage}%</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                      <span>⏱️ {game.time}s</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Back Buttons */}
+          <div className="flex gap-3">
+            <button
+              onClick={() => setScreen('players')}
+              className="flex-1 py-3 rounded-lg font-semibold border-2 bg-white transition-transform hover:scale-105"
+              style={{ color: SECONDARY, borderColor: SECONDARY }}
+            >
+              👥 All Players
+            </button>
+            <button
+              onClick={() => setScreen('home')}
+              className="flex-1 py-3 rounded-lg font-semibold text-white transition-transform hover:scale-105"
+              style={{ backgroundColor: PRIMARY }}
+            >
+              🏠 Home
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Fallback (should not happen)
+  return <div>Loading...</div>;
 }
