@@ -1,18 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-// --- ANIMATION & VISUALS IMPORTS ---
 import { motion, AnimatePresence } from "framer-motion";
 import Confetti from 'react-confetti';
-import { useWindowSize } from 'react-use'; // Optional: for responsive confetti
+import { useWindowSize } from 'react-use'; 
 
-// --- FIREBASE IMPORTS ---
+// --- FIREBASE IMPORTS (Keep your existing config) ---
 import { db } from './firebase'; 
 import { collection, addDoc, onSnapshot, query, orderBy, limit } from "firebase/firestore";
 
 // ==========================================
-// 🔊 PRO AUDIO ENGINE (Unchanged)
+// 🔊 AUDIO ENGINE
 // ==========================================
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-// ... (playSound function remains the same as before, omitted for brevity but include it in your file) ...
 const playSound = (type) => {
   if (audioCtx.state === 'suspended') audioCtx.resume();
   const osc = audioCtx.createOscillator();
@@ -38,16 +36,14 @@ const playSound = (type) => {
       [523.25, 659.25, 783.99, 1046.50, 1318.51].forEach((freq, i) => { const o = audioCtx.createOscillator(); const g = audioCtx.createGain(); o.connect(g); g.connect(audioCtx.destination); o.frequency.value = freq; g.gain.setValueAtTime(0.1, now + i * 0.1); g.gain.exponentialRampToValueAtTime(0.01, now + i * 0.1 + 0.6); o.start(now + i * 0.1); o.stop(now + i * 0.1 + 0.6); });
     },
     reward: () => {
-       // New sound for daily reward
        osc.type = 'sine'; osc.frequency.setValueAtTime(400, now); osc.frequency.exponentialRampToValueAtTime(800, now + 0.3); gainNode.gain.setValueAtTime(0.3, now); gainNode.gain.linearRampToValueAtTime(0, now + 0.5); osc.start(now); osc.stop(now + 0.5);
     }
   };
   if(sounds[type]) sounds[type]();
 };
 
-
 // ==========================================
-// 🎨 ICONS & ASSETS (Unchanged)
+// 🎨 ICONS & ASSETS
 // ==========================================
 const Icons = {
   Math: () => <span className="text-2xl">📐</span>,
@@ -82,9 +78,8 @@ const THEMES = {
 };
 
 // ==========================================
-// 📚 MASSIVE CONTENT DATABASE (Unchanged)
+// 📚 DATA
 // ==========================================
-// ... (Keep your existing campaignData object here) ...
 const campaignData = {
     Math: [
       { level: 1, title: "Mental Math", questions: [ { q: "12 + 15?", o: ["25","27","30","22"], c: 1, e: "Simple addition." }, { q: "9 x 9?", o: ["80","81","72","90"], c: 1, e: "Multiplication." }, { q: "50 / 2?", o: ["20","25","30","15"], c: 1, e: "Half of 50." }, { q: "100 - 45?", o: ["55","65","45","35"], c: 0, e: "Subtraction." }, { q: "Square root of 16?", o: ["2","3","4","5"], c: 2, e: "4x4=16" } ] },
@@ -135,7 +130,6 @@ function shuffleArray(array) {
   return newArr;
 }
 
-// --- NEW: Animation Variants for Page Transitions ---
 const pageVariants = {
   initial: { opacity: 0, y: 20, scale: 0.98 },
   in: { opacity: 1, y: 0, scale: 1 },
@@ -156,12 +150,12 @@ export default function QuizApp() {
   const [darkMode, setDarkMode] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [showRewardModal, setShowRewardModal] = useState(false);
-  // Optional: hook for responsive confetti
-  // const { width, height } = useWindowSize(); 
+  // Optional for responsive confetti
+  const { width, height } = useWindowSize(); 
   
   // USER STATE (Persisted)
   const [userState, setUserState] = useState(() => {
-    const saved = localStorage.getItem('quizUltraPro_v2'); // Changed key for new version
+    const saved = localStorage.getItem('quizUltraPro_v2'); 
     return saved ? JSON.parse(saved) : {
       name: 'Guest',
       coins: 100,
@@ -170,22 +164,21 @@ export default function QuizApp() {
       mastery: {},
       avatar: 'robot',
       unlockedAvatars: ['robot'],
-      lastRewardDate: null // NEW: Track daily rewards
+      lastRewardDate: null
     };
   });
 
   useEffect(() => { localStorage.setItem('quizUltraPro_v2', JSON.stringify(userState)); }, [userState]);
 
-  // --- NEW: Daily Reward Check ---
+  // DAILY REWARD
   useEffect(() => {
     const now = new Date();
-    const todayStr = now.toDateString(); // e.g., "Wed Dec 17 2025"
-    
+    const todayStr = now.toDateString(); 
     if (userState.lastRewardDate !== todayStr && screen === 'home') {
         setShowRewardModal(true);
         playSound('reward');
     }
-  }, []); // Run once on mount
+  }, []);
 
   const claimDailyReward = () => {
       setUserState(prev => ({
@@ -205,7 +198,7 @@ export default function QuizApp() {
   const [feedback, setFeedback] = useState(null);
   const timerRef = useRef(null);
   
-  // --- LEADERBOARD SYNC (Firebase) ---
+  // LEADERBOARD SYNC
   const [leaderboard, setLeaderboard] = useState([]);
   useEffect(() => {
     if(db) {
@@ -219,15 +212,15 @@ export default function QuizApp() {
     }
   }, []);
 
-  // --- TIMER LOGIC ---
+  // TIMER LOGIC
   useEffect(() => {
     if (screen === 'quiz' && !feedback && !game.frozen) {
       timerRef.current = setInterval(() => {
         setGame(prev => {
           if (prev.timeLeft <= 0.1) { clearInterval(timerRef.current); handleAnswer(-1); return prev; }
-          return { ...prev, timeLeft: prev.timeLeft - 0.1 }; // Higher precision for smooth circle
+          return { ...prev, timeLeft: prev.timeLeft - 0.1 }; 
         });
-      }, 100); // Update every 100ms
+      }, 100); 
       return () => clearInterval(timerRef.current);
     }
   }, [screen, game.qIndex, feedback, game.frozen]);
@@ -344,19 +337,18 @@ export default function QuizApp() {
   };
 
   // ==========================================
-  // 🖥️ RENDERERS
+  // 🖥️ RENDERERS (RESPONSIVE UPDATES)
   // ==========================================
 
-  // --- NEW: Daily Reward Modal ---
   const renderDailyRewardModal = () => (
       <AnimatePresence>
         {showRewardModal && (
             <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-                <motion.div initial={{scale:0.8, y: 50}} animate={{scale:1, y:0}} exit={{scale:0.8, y:50}} className={`max-w-sm w-full p-8 rounded-3xl text-center shadow-2xl ${darkMode ? 'bg-slate-800 text-white' : 'bg-white text-slate-800'}`}>
-                    <div className="text-6xl mb-4">🎁</div>
-                    <h2 className="text-2xl font-black mb-2">Daily Login Bonus!</h2>
-                    <p className="mb-6 opacity-70">Thanks for coming back today.</p>
-                    <div className="flex justify-center items-center gap-2 text-3xl font-black text-yellow-500 mb-8 bg-yellow-500/10 py-4 rounded-xl">
+                <motion.div initial={{scale:0.8, y: 50}} animate={{scale:1, y:0}} exit={{scale:0.8, y:50}} className={`w-full max-w-sm p-6 md:p-8 rounded-3xl text-center shadow-2xl ${darkMode ? 'bg-slate-800 text-white' : 'bg-white text-slate-800'}`}>
+                    <div className="text-5xl md:text-6xl mb-4">🎁</div>
+                    <h2 className="text-xl md:text-2xl font-black mb-2">Daily Login Bonus!</h2>
+                    <p className="mb-6 opacity-70 text-sm md:text-base">Thanks for coming back today.</p>
+                    <div className="flex justify-center items-center gap-2 text-2xl md:text-3xl font-black text-yellow-500 mb-8 bg-yellow-500/10 py-3 md:py-4 rounded-xl">
                         <Icons.Coin /> +50
                     </div>
                     <button onClick={claimDailyReward} className="w-full py-3 rounded-xl bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-bold text-lg shadow-lg hover:scale-105 transition">
@@ -373,55 +365,55 @@ export default function QuizApp() {
     
     return (
       <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition} className="w-full max-w-5xl pb-20">
-        {/* TOP BAR */}
-        <div className={`flex flex-col md:flex-row gap-4 justify-between items-center mb-8 bg-white/10 backdrop-blur-md p-4 rounded-3xl border shadow-xl ${darkMode ? 'bg-slate-800/80 border-slate-700/50' : 'bg-white/60 border-white/50'}`}>
+        {/* RESPONSIVE TOP BAR */}
+        <div className={`flex flex-col md:flex-row gap-4 justify-between items-center mb-6 md:mb-8 bg-white/10 backdrop-blur-md p-4 rounded-3xl border shadow-xl ${darkMode ? 'bg-slate-800/80 border-slate-700/50' : 'bg-white/60 border-white/50'}`}>
           
-          <button onClick={() => setScreen('profile')} className="flex items-center gap-3 hover:opacity-80 transition text-left group">
-             <div className="w-14 h-14 bg-indigo-600 rounded-full flex items-center justify-center text-3xl shadow-lg border-4 border-indigo-400 group-hover:scale-105 transition">
+          <button onClick={() => setScreen('profile')} className="flex items-center gap-3 hover:opacity-80 transition text-left group w-full md:w-auto">
+             <div className="w-12 h-12 md:w-14 md:h-14 bg-indigo-600 rounded-full flex items-center justify-center text-2xl md:text-3xl shadow-lg border-4 border-indigo-400 group-hover:scale-105 transition">
                {currentAvatar.icon}
              </div>
              <div>
-               <h2 className={`font-bold text-xl leading-tight ${darkMode?'text-white':'text-slate-800'}`}>{userState.name}</h2>
-               <div className={`text-xs font-bold uppercase tracking-widest ${darkMode?'text-indigo-300':'text-indigo-500'}`}>Lv. {Object.values(userState.unlockedLevels).reduce((a,b)=>a+b,0)} Explorer</div>
+               <h2 className={`font-bold text-lg md:text-xl leading-tight ${darkMode?'text-white':'text-slate-800'}`}>{userState.name}</h2>
+               <div className={`text-[10px] md:text-xs font-bold uppercase tracking-widest ${darkMode?'text-indigo-300':'text-indigo-500'}`}>Lv. {Object.values(userState.unlockedLevels).reduce((a,b)=>a+b,0)} Explorer</div>
              </div>
           </button>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between w-full md:w-auto gap-3">
              <button onClick={() => setScreen('leaderboard')} className="p-3 rounded-2xl bg-gradient-to-br from-yellow-400/20 to-orange-500/20 text-yellow-600 border border-yellow-500/30 hover:scale-105 transition shadow-sm">
-                <span className="text-2xl">🏆</span>
+                <span className="text-xl md:text-2xl">🏆</span>
              </button>
 
-             <div className="flex items-center gap-2 bg-slate-900/80 backdrop-blur-md pl-4 pr-6 py-3 rounded-full border border-slate-700/50 shadow-inner">
+             <div className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-900/80 backdrop-blur-md pl-4 pr-6 py-3 rounded-full border border-slate-700/50 shadow-inner">
                 <Icons.Coin />
-                <span className="font-mono font-black text-yellow-400 text-xl">{userState.coins}</span>
+                <span className="font-mono font-black text-yellow-400 text-lg md:text-xl">{userState.coins}</span>
              </div>
              <button onClick={() => setScreen('shop')} className="p-3 bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-2xl hover:scale-105 transition shadow-lg ring-4 ring-indigo-600/20"><Icons.Shop /></button>
           </div>
         </div>
 
         {/* CAMPAIGN GRID */}
-        <h3 className={`text-3xl font-black mb-8 ${darkMode?'text-white':'text-slate-800'}`}>Campaigns</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <h3 className={`text-2xl md:text-3xl font-black mb-6 md:mb-8 ${darkMode?'text-white':'text-slate-800'}`}>Campaigns</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
           {Object.keys(campaignData).map(cat => {
             const unlocked = userState.unlockedLevels[cat] || 1;
             const theme = THEMES[cat];
             
             return (
-              <motion.div whileHover={{ y: -5, scale: 1.02 }} key={cat} className={`relative overflow-hidden rounded-[2rem] p-6 border-2 transition-all shadow-2xl group ${darkMode?'bg-slate-800 border-slate-700/60':'bg-white border-white/80'}`}>
-                <div className={`absolute top-0 right-0 w-40 h-40 bg-gradient-to-br ${theme} opacity-20 rounded-bl-[3rem] -mr-10 -mt-10 transition group-hover:opacity-40 group-hover:scale-110 duration-500`}></div>
+              <motion.div whileHover={{ y: -5, scale: 1.02 }} key={cat} className={`relative overflow-hidden rounded-[2rem] p-5 md:p-6 border-2 transition-all shadow-2xl group ${darkMode?'bg-slate-800 border-slate-700/60':'bg-white border-white/80'}`}>
+                <div className={`absolute top-0 right-0 w-32 h-32 md:w-40 md:h-40 bg-gradient-to-br ${theme} opacity-20 rounded-bl-[3rem] -mr-8 -mt-8 md:-mr-10 md:-mt-10 transition group-hover:opacity-40 group-hover:scale-110 duration-500`}></div>
                 
-                <div className="flex items-start justify-between mb-6 relative z-10">
-                  <div className={`p-4 rounded-2xl bg-gradient-to-br ${theme} text-white shadow-lg text-3xl`}>
+                <div className="flex items-start justify-between mb-4 md:mb-6 relative z-10">
+                  <div className={`p-3 md:p-4 rounded-2xl bg-gradient-to-br ${theme} text-white shadow-lg text-2xl md:text-3xl`}>
                     {Icons[cat] ? Icons[cat]() : '📚'}
                   </div>
-                  <span className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider shadow-sm ${darkMode ? 'bg-slate-900 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>
+                  <span className={`px-3 py-1 md:px-4 md:py-1.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-wider shadow-sm ${darkMode ? 'bg-slate-900 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>
                     Level {unlocked}
                   </span>
                 </div>
 
-                <h4 className={`text-2xl font-black mb-6 relative z-10 ${darkMode?'text-white':'text-slate-800'}`}>{cat}</h4>
+                <h4 className={`text-xl md:text-2xl font-black mb-4 md:mb-6 relative z-10 ${darkMode?'text-white':'text-slate-800'}`}>{cat}</h4>
 
-                <div className="space-y-3 relative z-10">
+                <div className="space-y-2 md:space-y-3 relative z-10">
                   {[0,1,2].map(idx => {
                     const lvlNum = idx + 1;
                     const isLocked = lvlNum > unlocked;
@@ -432,7 +424,7 @@ export default function QuizApp() {
                         key={idx}
                         disabled={isLocked}
                         onClick={() => startGame(cat, idx)}
-                        className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 text-sm font-bold transition-all group/btn
+                        className={`w-full flex items-center justify-between p-3 md:p-4 rounded-2xl border-2 text-xs md:text-sm font-bold transition-all group/btn
                           ${isLocked 
                             ? 'opacity-50 grayscale bg-slate-100/50 dark:bg-slate-900/50 border-transparent cursor-not-allowed' 
                             : `hover:pl-6 bg-transparent ${isMastered ? 'border-yellow-400/60 text-yellow-600 dark:text-yellow-400 bg-yellow-50/10' : 'border-slate-200 dark:border-slate-700/60 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50'}`
@@ -440,9 +432,9 @@ export default function QuizApp() {
                         `}
                       >
                           <span className="flex items-center gap-3">
-                            <span className="text-lg">{isLocked ? '🔒' : (isMastered ? '⭐' : '🟢')}</span> Level {lvlNum}
+                            <span className="text-base md:text-lg">{isLocked ? '🔒' : (isMastered ? '⭐' : '🟢')}</span> Level {lvlNum}
                           </span>
-                          {!isLocked && <span className="text-xs opacity-50 group-hover/btn:opacity-100 transition-opacity">Play Now →</span>}
+                          {!isLocked && <span className="hidden md:inline text-xs opacity-50 group-hover/btn:opacity-100 transition-opacity">Play Now →</span>}
                       </button>
                     )
                   })}
@@ -454,7 +446,7 @@ export default function QuizApp() {
         
         {/* SETTINGS AREA */}
           <div className="mt-12 flex justify-center gap-4">
-              <button onClick={() => setDarkMode(!darkMode)} className="px-8 py-3 rounded-full bg-slate-200 dark:bg-slate-800 font-bold text-slate-600 dark:text-slate-300 hover:scale-105 transition shadow-sm">
+              <button onClick={() => setDarkMode(!darkMode)} className="px-6 py-3 md:px-8 md:py-3 rounded-full bg-slate-200 dark:bg-slate-800 font-bold text-sm md:text-base text-slate-600 dark:text-slate-300 hover:scale-105 transition shadow-sm">
                 {darkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}
               </button>
           </div>
@@ -464,24 +456,30 @@ export default function QuizApp() {
 
   const renderShop = () => (
     <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition} className="max-w-2xl w-full">
-       <div className="flex items-center mb-8">
-         <button onClick={() => setScreen('home')} className="p-3 mr-4 rounded-full bg-slate-200 dark:bg-slate-700 hover:scale-110 transition"><Icons.Back /></button>
-         <h2 className={`text-4xl font-black ${darkMode?'text-white':'text-slate-800'}`}>Item Shop</h2>
-         <div className="ml-auto flex items-center gap-2 bg-slate-900 px-5 py-3 rounded-full text-yellow-400 font-mono font-black text-xl shadow-inner">
+       <div className="flex flex-col md:flex-row items-center mb-8 gap-4">
+         <div className="flex items-center w-full md:w-auto">
+            <button onClick={() => setScreen('home')} className="p-3 mr-4 rounded-full bg-slate-200 dark:bg-slate-700 hover:scale-110 transition"><Icons.Back /></button>
+            <h2 className={`text-3xl md:text-4xl font-black ${darkMode?'text-white':'text-slate-800'}`}>Item Shop</h2>
+         </div>
+         <div className="ml-auto w-full md:w-auto flex justify-center items-center gap-2 bg-slate-900 px-5 py-3 rounded-full text-yellow-400 font-mono font-black text-xl shadow-inner">
             <Icons.Coin /> {userState.coins}
          </div>
        </div>
 
        {/* LIFELINES */}
-       <div className={`p-8 rounded-[2rem] border-2 mb-8 shadow-xl ${darkMode?'bg-slate-800/50 border-slate-700/50':'bg-white border-slate-200/80'}`}>
-         <h3 className="text-2xl font-black mb-6 text-indigo-500 uppercase tracking-wider">Power-Ups</h3>
-         <div className="grid grid-cols-2 gap-6">
+       <div className={`p-6 md:p-8 rounded-[2rem] border-2 mb-8 shadow-xl ${darkMode?'bg-slate-800/50 border-slate-700/50':'bg-white border-slate-200/80'}`}>
+         <h3 className="text-xl md:text-2xl font-black mb-6 text-indigo-500 uppercase tracking-wider">Power-Ups</h3>
+         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
             {[{id:'fifty', icon:'✂️', name:'50:50', cost:100, color:'bg-blue-500'}, {id:'freeze', icon:'❄️', name:'Freeze', cost:150, color:'bg-cyan-500'}].map(item => (
-                <div key={item.id} className="p-6 border-2 rounded-3xl flex flex-col items-center text-center dark:border-slate-600/60 hover:scale-105 transition bg-gradient-to-b from-transparent to-slate-50/30 dark:to-slate-900/30">
-                    <div className={`text-5xl mb-3 p-4 rounded-full text-white shadow-lg ${item.color}`}>{item.icon}</div>
-                    <div className={`font-bold text-xl ${darkMode?'text-white':'text-slate-800'}`}>{item.name}</div>
-                    <div className="text-sm text-slate-500 mb-4 font-bold">Owned: {userState.inventory[item.id]}</div>
-                    <button onClick={() => buyItem(item.id, item.cost, 'lifeline')} className="px-6 py-2 bg-green-500 text-white rounded-full font-bold text-sm shadow-md hover:bg-green-400 transition flex items-center gap-2">
+                <div key={item.id} className="p-4 md:p-6 border-2 rounded-3xl flex flex-row sm:flex-col items-center justify-between sm:justify-center text-center dark:border-slate-600/60 hover:scale-105 transition bg-gradient-to-b from-transparent to-slate-50/30 dark:to-slate-900/30">
+                    <div className="flex items-center sm:block gap-4">
+                        <div className={`text-3xl md:text-5xl mb-0 md:mb-3 p-3 md:p-4 rounded-full text-white shadow-lg ${item.color}`}>{item.icon}</div>
+                        <div className="text-left sm:text-center">
+                            <div className={`font-bold text-lg md:text-xl ${darkMode?'text-white':'text-slate-800'}`}>{item.name}</div>
+                            <div className="text-xs md:text-sm text-slate-500 font-bold">Owned: {userState.inventory[item.id]}</div>
+                        </div>
+                    </div>
+                    <button onClick={() => buyItem(item.id, item.cost, 'lifeline')} className="px-4 py-2 md:px-6 bg-green-500 text-white rounded-full font-bold text-xs md:text-sm shadow-md hover:bg-green-400 transition flex items-center gap-2">
                         Buy <span className="bg-black/20 px-2 rounded-full">{item.cost} 🪙</span>
                     </button>
                 </div>
@@ -490,22 +488,22 @@ export default function QuizApp() {
        </div>
 
        {/* AVATARS */}
-       <div className={`p-8 rounded-[2rem] border-2 shadow-xl ${darkMode?'bg-slate-800/50 border-slate-700/50':'bg-white border-slate-200/80'}`}>
-         <h3 className="text-2xl font-black mb-6 text-purple-500 uppercase tracking-wider">Avatars</h3>
-         <div className="grid grid-cols-3 gap-4">
+       <div className={`p-6 md:p-8 rounded-[2rem] border-2 shadow-xl ${darkMode?'bg-slate-800/50 border-slate-700/50':'bg-white border-slate-200/80'}`}>
+         <h3 className="text-xl md:text-2xl font-black mb-6 text-purple-500 uppercase tracking-wider">Avatars</h3>
+         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
             {AVATARS.map(av => {
                const owned = userState.unlockedAvatars.includes(av.id);
                const selected = userState.avatar === av.id;
                return (
                  <motion.div whileHover={{scale:1.05}} key={av.id} className={`p-4 rounded-3xl border-2 flex flex-col items-center transition cursor-pointer ${selected ? 'border-green-500 bg-green-50/50 dark:bg-green-900/20 ring-4 ring-green-500/20' : 'dark:border-slate-600/60 hover:border-purple-400'}`}>
-                    <div className="text-5xl mb-2 filter drop-shadow-md">{av.icon}</div>
+                    <div className="text-4xl md:text-5xl mb-2 filter drop-shadow-md">{av.icon}</div>
                     <div className={`text-sm font-bold mb-3 ${darkMode?'text-white':'text-slate-800'}`}>{av.name}</div>
                     {owned ? (
-                      <button disabled={selected} onClick={() => setUserState(p => ({...p, avatar: av.id}))} className={`text-xs px-4 py-2 rounded-full font-bold transition w-full ${selected ? 'bg-green-500 text-white shadow-inner' : 'bg-slate-200 text-slate-600 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-300'}`}>
+                      <button disabled={selected} onClick={() => setUserState(p => ({...p, avatar: av.id}))} className={`text-xs px-3 py-2 rounded-full font-bold transition w-full ${selected ? 'bg-green-500 text-white shadow-inner' : 'bg-slate-200 text-slate-600 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-300'}`}>
                         {selected ? 'Equipped' : 'Equip'}
                       </button>
                     ) : (
-                      <button onClick={() => buyItem(av.id, av.cost, 'avatar')} className="text-xs px-4 py-2 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-black shadow-md hover:from-yellow-300 hover:to-orange-400 transition w-full flex justify-center items-center gap-1">
+                      <button onClick={() => buyItem(av.id, av.cost, 'avatar')} className="text-xs px-3 py-2 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-black shadow-md hover:from-yellow-300 hover:to-orange-400 transition w-full flex justify-center items-center gap-1">
                         {av.cost} 🪙
                       </button>
                     )}
@@ -521,7 +519,6 @@ export default function QuizApp() {
     const q = game.questions[game.qIndex];
     if(!q) return null;
 
-    // --- NEW: Circular Timer Calculation ---
     const radius = 30;
     const circumference = 2 * Math.PI * radius;
     const progressOffset = ((30 - game.timeLeft) / 30) * circumference;
@@ -530,38 +527,37 @@ export default function QuizApp() {
     return (
       <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition} className="max-w-2xl w-full pb-10">
          {/* HEADER */}
-         <div className="flex justify-between items-center mb-8">
-            <button onClick={() => {clearInterval(timerRef.current); setScreen('home')}} className={`text-sm font-black uppercase tracking-widest flex items-center gap-2 hover:opacity-70 transition ${darkMode?'text-slate-400':'text-slate-500'}`}>
+         <div className="flex justify-between items-center mb-6 md:mb-8">
+            <button onClick={() => {clearInterval(timerRef.current); setScreen('home')}} className={`text-xs md:text-sm font-black uppercase tracking-widest flex items-center gap-2 hover:opacity-70 transition ${darkMode?'text-slate-400':'text-slate-500'}`}>
                 <Icons.Back /> {game.category}
             </button>
-            <div className="flex gap-3">
-               <div className="px-4 py-2 rounded-full bg-orange-100 text-orange-600 font-black text-sm shadow-sm flex items-center gap-1">🔥 {game.streak}</div>
-               <div className="px-4 py-2 rounded-full bg-indigo-100 text-indigo-600 font-black text-sm shadow-sm flex items-center gap-1">⭐ {game.score}</div>
+            <div className="flex gap-2 md:gap-3">
+               <div className="px-3 py-1 md:px-4 md:py-2 rounded-full bg-orange-100 text-orange-600 font-black text-xs md:text-sm shadow-sm flex items-center gap-1">🔥 {game.streak}</div>
+               <div className="px-3 py-1 md:px-4 md:py-2 rounded-full bg-indigo-100 text-indigo-600 font-black text-xs md:text-sm shadow-sm flex items-center gap-1">⭐ {game.score}</div>
             </div>
          </div>
 
-         {/* NEW: Circular Timer & Question */}
-         <div className="relative mb-10">
-             <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 z-20 bg-white dark:bg-slate-800 rounded-full p-2 shadow-2xl">
-                 {/* SVG Timer */}
-                 <div className="relative w-20 h-20 flex items-center justify-center">
+         {/* TIMER & QUESTION */}
+         <div className="relative mb-6 md:mb-10">
+             <div className="absolute -top-10 md:-top-12 left-1/2 transform -translate-x-1/2 z-20 bg-white dark:bg-slate-800 rounded-full p-1.5 md:p-2 shadow-2xl">
+                 <div className="relative w-16 h-16 md:w-20 md:h-20 flex items-center justify-center">
                     <svg className="w-full h-full transform -rotate-90" viewBox="0 0 70 70">
                         <circle cx="35" cy="35" r={radius} stroke="currentColor" strokeWidth="6" fill="none" className="text-slate-200 dark:text-slate-700" />
                         <circle cx="35" cy="35" r={radius} stroke="currentColor" strokeWidth="6" fill="none" strokeDasharray={circumference} strokeDashoffset={progressOffset} strokeLinecap="round" className={`transition-all duration-100 ease-linear ${timerColor}`} />
                     </svg>
-                    <span className={`absolute text-2xl font-black ${timerColor}`}>{Math.ceil(game.timeLeft)}</span>
+                    <span className={`absolute text-xl md:text-2xl font-black ${timerColor}`}>{Math.ceil(game.timeLeft)}</span>
                  </div>
              </div>
 
-             <div className={`pt-16 pb-10 px-8 rounded-[2.5rem] border-2 shadow-2xl text-center min-h-[220px] flex items-center justify-center relative z-10 ${darkMode?'bg-slate-800/90 border-slate-700/50 text-white backdrop-blur-md':'bg-white/90 border-slate-200/80 text-slate-900 backdrop-blur-md'}`}>
-                <h2 className="text-3xl font-bold leading-tight">{q.q}</h2>
+             <div className={`pt-12 md:pt-16 pb-8 px-6 rounded-[2rem] md:rounded-[2.5rem] border-2 shadow-2xl text-center min-h-[180px] md:min-h-[220px] flex items-center justify-center relative z-10 ${darkMode?'bg-slate-800/90 border-slate-700/50 text-white backdrop-blur-md':'bg-white/90 border-slate-200/80 text-slate-900 backdrop-blur-md'}`}>
+                <h2 className="text-xl md:text-3xl font-bold leading-tight">{q.q}</h2>
              </div>
          </div>
 
          {/* OPTIONS */}
-         <div className="grid grid-cols-1 gap-4 mb-10">
+         <div className="grid grid-cols-1 gap-3 md:gap-4 mb-6 md:mb-10">
             {q.o.map((opt, i) => {
-               if(game.hiddenOptions.includes(i)) return <div key={i} className="h-16 opacity-0 pointer-events-none"></div>;
+               if(game.hiddenOptions.includes(i)) return <div key={i} className="h-14 md:h-16 opacity-0 pointer-events-none"></div>;
 
                let stateStyle = "";
                if (feedback) {
@@ -573,19 +569,19 @@ export default function QuizApp() {
                }
 
                return (
-                 <button key={i} disabled={!!feedback} onClick={() => handleAnswer(i)} className={`p-5 rounded-2xl border-2 font-bold text-xl transition-all transform active:scale-95 shadow-md ${stateStyle}`}>
+                 <button key={i} disabled={!!feedback} onClick={() => handleAnswer(i)} className={`p-4 md:p-5 rounded-2xl border-2 font-bold text-lg md:text-xl transition-all transform active:scale-95 shadow-md ${stateStyle}`}>
                    {opt}
                  </button>
                )
             })}
          </div>
 
-         {/* LIFELINES ROW */}
-         <div className="flex justify-center gap-6">
+         {/* LIFELINES */}
+         <div className="flex justify-center gap-4 md:gap-6">
              {[{id:'fifty', icon:'✂️', bg:'bg-blue-500'}, {id:'freeze', icon:'❄️', bg:'bg-cyan-500'}].map(l => (
                 <button key={l.id} onClick={() => useLifeline(l.id)} disabled={!game.activeLifelines[l.id] || userState.inventory[l.id] <= 0 || !!feedback} className="flex flex-col items-center gap-2 disabled:opacity-40 disabled:grayscale transition group">
-                    <div className={`w-16 h-16 rounded-2xl ${l.bg} text-white flex items-center justify-center text-3xl shadow-lg group-hover:scale-110 group-hover:rotate-6 transition border-4 border-white/20`}>{l.icon}</div>
-                    <span className="px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-700 text-xs font-black text-slate-600 dark:text-slate-300 shadow-sm">{userState.inventory[l.id]} Left</span>
+                    <div className={`w-14 h-14 md:w-16 md:h-16 rounded-2xl ${l.bg} text-white flex items-center justify-center text-2xl md:text-3xl shadow-lg group-hover:scale-110 group-hover:rotate-6 transition border-4 border-white/20`}>{l.icon}</div>
+                    <span className="px-2 py-1 md:px-3 rounded-full bg-slate-200 dark:bg-slate-700 text-[10px] md:text-xs font-black text-slate-600 dark:text-slate-300 shadow-sm">{userState.inventory[l.id]} Left</span>
                 </button>
              ))}
          </div>
@@ -593,9 +589,9 @@ export default function QuizApp() {
          {/* EXPLANATION POPUP */}
          <AnimatePresence>
             {feedback && (
-            <motion.div initial={{opacity:0, y:20}} animate={{opacity:1, y:0}} exit={{opacity:0, y:20}} className={`mt-8 p-6 rounded-2xl text-center border-2 shadow-xl ${feedback.type === 'correct' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
-                <div className="text-4xl mb-2">{feedback.type === 'correct' ? '🎉' : '💡'}</div>
-                <span className="font-bold text-lg">{feedback.expl}</span>
+            <motion.div initial={{opacity:0, y:20}} animate={{opacity:1, y:0}} exit={{opacity:0, y:20}} className={`mt-6 md:mt-8 p-4 md:p-6 rounded-2xl text-center border-2 shadow-xl ${feedback.type === 'correct' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                <div className="text-3xl md:text-4xl mb-2">{feedback.type === 'correct' ? '🎉' : '💡'}</div>
+                <span className="font-bold text-base md:text-lg">{feedback.expl}</span>
             </motion.div>
             )}
          </AnimatePresence>
@@ -606,29 +602,30 @@ export default function QuizApp() {
   const renderResults = () => {
     const isWin = game.score / game.questions.length >= 0.7;
     return (
-        <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition} className="max-w-md w-full text-center pt-10 relative">
-            <motion.div initial={{scale:0}} animate={{scale:1, rotate:[0, -10, 10, 0]}} transition={{delay:0.2, type:'spring'}} className="text-8xl mb-6 filter drop-shadow-2xl">
+        <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition} className="max-w-md w-full text-center pt-6 md:pt-10 relative">
+            <motion.div initial={{scale:0}} animate={{scale:1, rotate:[0, -10, 10, 0]}} transition={{delay:0.2, type:'spring'}} className="text-7xl md:text-8xl mb-4 md:mb-6 filter drop-shadow-2xl">
+                {showConfetti && <Confetti recycle={false} numberOfPieces={width < 600 ? 200 : 500} gravity={0.2} />}
                 {isWin ? '🏆' : '😓'}
             </motion.div>
-            <h2 className={`text-5xl font-black mb-3 ${darkMode?'text-white':'text-slate-800'}`}>
+            <h2 className={`text-4xl md:text-5xl font-black mb-3 ${darkMode?'text-white':'text-slate-800'}`}>
                 {isWin ? 'Level Complete!' : 'Try Again!'}
             </h2>
-            <p className="text-slate-500 mb-10 font-bold text-xl">You scored {game.score} / {game.questions.length}</p>
+            <p className="text-slate-500 mb-8 md:mb-10 font-bold text-lg md:text-xl">You scored {game.score} / {game.questions.length}</p>
 
-            <div className="grid grid-cols-2 gap-6 mb-10">
-                <motion.div initial={{x:-50, opacity:0}} animate={{x:0, opacity:1}} transition={{delay:0.4}} className="p-6 rounded-3xl bg-gradient-to-br from-yellow-50 to-orange-100 border-2 border-yellow-200 shadow-lg">
-                    <div className="text-4xl mb-2">🪙</div>
-                    <div className="font-black text-2xl text-yellow-700">+{game.score * 10}</div>
-                    <div className="text-xs font-bold text-yellow-600 uppercase">Coins Earned</div>
+            <div className="grid grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-10">
+                <motion.div initial={{x:-50, opacity:0}} animate={{x:0, opacity:1}} transition={{delay:0.4}} className="p-4 md:p-6 rounded-3xl bg-gradient-to-br from-yellow-50 to-orange-100 border-2 border-yellow-200 shadow-lg">
+                    <div className="text-3xl md:text-4xl mb-2">🪙</div>
+                    <div className="font-black text-xl md:text-2xl text-yellow-700">+{game.score * 10}</div>
+                    <div className="text-[10px] md:text-xs font-bold text-yellow-600 uppercase">Coins Earned</div>
                 </motion.div>
-                <motion.div initial={{x:50, opacity:0}} animate={{x:0, opacity:1}} transition={{delay:0.6}} className="p-6 rounded-3xl bg-gradient-to-br from-blue-50 to-indigo-100 border-2 border-blue-200 shadow-lg">
-                    <div className="text-4xl mb-2">🔥</div>
-                    <div className="font-black text-2xl text-blue-700">{game.score}</div>
-                     <div className="text-xs font-bold text-blue-600 uppercase">XP Gained</div>
+                <motion.div initial={{x:50, opacity:0}} animate={{x:0, opacity:1}} transition={{delay:0.6}} className="p-4 md:p-6 rounded-3xl bg-gradient-to-br from-blue-50 to-indigo-100 border-2 border-blue-200 shadow-lg">
+                    <div className="text-3xl md:text-4xl mb-2">🔥</div>
+                    <div className="font-black text-xl md:text-2xl text-blue-700">{game.score}</div>
+                     <div className="text-[10px] md:text-xs font-bold text-blue-600 uppercase">XP Gained</div>
                 </motion.div>
             </div>
 
-            <button onClick={() => setScreen('home')} className="w-full py-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-xl shadow-xl hover:scale-105 transition mb-4">
+            <button onClick={() => setScreen('home')} className="w-full py-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-lg md:text-xl shadow-xl hover:scale-105 transition mb-4">
                 Continue
             </button>
             <button onClick={() => startGame(game.category, game.levelIdx)} className="w-full py-4 rounded-2xl border-2 border-slate-300 text-slate-500 font-bold hover:bg-slate-100 transition">
@@ -642,15 +639,15 @@ export default function QuizApp() {
     const displayData = leaderboard; 
     return (
       <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition} className="max-w-2xl w-full pb-10">
-        <div className="flex items-center mb-8">
+        <div className="flex items-center mb-6 md:mb-8">
           <button onClick={() => { playSound('click'); setScreen('home'); }} className="p-3 mr-4 rounded-full bg-slate-200 dark:bg-slate-700 transition hover:scale-110">
             <Icons.Back />
           </button>
-          <h2 className={`text-4xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>Global Rankings</h2>
+          <h2 className={`text-3xl md:text-4xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>Global Rankings</h2>
         </div>
 
-        <div className={`rounded-[2.5rem] border-2 overflow-hidden shadow-2xl min-h-[400px] ${darkMode ? 'bg-slate-800/50 border-slate-700/50 backdrop-blur-md' : 'bg-white/80 border-slate-200/80 backdrop-blur-md'}`}>
-          <div className={`grid grid-cols-12 gap-4 p-6 text-xs font-black uppercase tracking-widest border-b-2 ${darkMode ? 'bg-slate-900/30 border-slate-700/50 text-slate-400' : 'bg-slate-50/50 border-slate-200/50 text-slate-500'}`}>
+        <div className={`rounded-[2rem] md:rounded-[2.5rem] border-2 overflow-hidden shadow-2xl min-h-[400px] ${darkMode ? 'bg-slate-800/50 border-slate-700/50 backdrop-blur-md' : 'bg-white/80 border-slate-200/80 backdrop-blur-md'}`}>
+          <div className={`grid grid-cols-12 gap-2 md:gap-4 p-4 md:p-6 text-[10px] md:text-xs font-black uppercase tracking-widest border-b-2 ${darkMode ? 'bg-slate-900/30 border-slate-700/50 text-slate-400' : 'bg-slate-50/50 border-slate-200/50 text-slate-500'}`}>
             <div className="col-span-2 text-center">Rank</div>
             <div className="col-span-7">Player</div>
             <div className="col-span-3 text-right">Score</div>
@@ -670,18 +667,18 @@ export default function QuizApp() {
                 const isTop3 = index < 3;
                 
                 return (
-                  <motion.div initial={{opacity:0, y:10}} animate={{opacity:1, y:0}} transition={{delay: index * 0.05}} key={entry.id || index} className={`grid grid-cols-12 gap-4 p-5 items-center border-b last:border-0 transition hover:bg-white/10 dark:hover:bg-black/10 ${darkMode ? 'border-slate-700/50 text-white' : 'border-slate-100 text-slate-800'} ${entry.player === userState.name ? (darkMode ? 'bg-indigo-900/30' : 'bg-indigo-50') : ''}`}>
-                    <div className="col-span-2 text-center font-black text-2xl flex justify-center">
-                      {isTop3 ? rankIcons[index] : <span className="opacity-50 text-lg">#{index + 1}</span>}
+                  <motion.div initial={{opacity:0, y:10}} animate={{opacity:1, y:0}} transition={{delay: index * 0.05}} key={entry.id || index} className={`grid grid-cols-12 gap-2 md:gap-4 p-4 md:p-5 items-center border-b last:border-0 transition hover:bg-white/10 dark:hover:bg-black/10 ${darkMode ? 'border-slate-700/50 text-white' : 'border-slate-100 text-slate-800'} ${entry.player === userState.name ? (darkMode ? 'bg-indigo-900/30' : 'bg-indigo-50') : ''}`}>
+                    <div className="col-span-2 text-center font-black text-xl md:text-2xl flex justify-center">
+                      {isTop3 ? rankIcons[index] : <span className="opacity-50 text-sm md:text-lg">#{index + 1}</span>}
                     </div>
-                    <div className="col-span-7 flex items-center gap-4">
-                      <div className="text-3xl filter drop-shadow-sm">{ava.icon}</div>
+                    <div className="col-span-7 flex items-center gap-2 md:gap-4">
+                      <div className="text-2xl md:text-3xl filter drop-shadow-sm">{ava.icon}</div>
                       <div className="flex flex-col truncate">
-                        <span className={`font-bold text-lg truncate ${entry.player === userState.name ? 'text-indigo-500' : ''}`}>{entry.player} {entry.player === userState.name && '(You)'}</span>
-                        <span className="text-[10px] font-bold opacity-60 uppercase tracking-wider bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full w-fit mt-1">{entry.category} • Lvl {entry.level}</span>
+                        <span className={`font-bold text-sm md:text-lg truncate ${entry.player === userState.name ? 'text-indigo-500' : ''}`}>{entry.player} {entry.player === userState.name && '(You)'}</span>
+                        <span className="text-[9px] md:text-[10px] font-bold opacity-60 uppercase tracking-wider bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full w-fit mt-1">{entry.category} • Lvl {entry.level}</span>
                       </div>
                     </div>
-                    <div className="col-span-3 text-right font-mono font-black text-xl text-indigo-500">
+                    <div className="col-span-3 text-right font-mono font-black text-sm md:text-xl text-indigo-500">
                       {entry.score.toLocaleString()}
                     </div>
                   </motion.div>
@@ -709,33 +706,33 @@ export default function QuizApp() {
 
     return (
       <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition} className="max-w-md w-full pb-10">
-        <div className="flex items-center mb-8">
+        <div className="flex items-center mb-6 md:mb-8">
           <button onClick={() => { playSound('click'); setScreen('home'); }} className="p-3 mr-4 rounded-full bg-slate-200 dark:bg-slate-700 transition hover:scale-110">
             <Icons.Back />
           </button>
-          <h2 className={`text-4xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>My Profile</h2>
+          <h2 className={`text-3xl md:text-4xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>My Profile</h2>
         </div>
 
-        <div className={`relative p-10 rounded-[2.5rem] border-2 text-center mb-8 shadow-2xl overflow-hidden ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-           <div className={`absolute top-0 left-0 w-full h-32 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-20`}></div>
+        <div className={`relative p-6 md:p-10 rounded-[2.5rem] border-2 text-center mb-6 md:mb-8 shadow-2xl overflow-hidden ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+           <div className={`absolute top-0 left-0 w-full h-24 md:h-32 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-20`}></div>
            <div className="relative z-10">
-             <motion.div whileHover={{rotate:10, scale:1.05}} className="w-32 h-32 mx-auto bg-slate-100 dark:bg-slate-900 rounded-full flex items-center justify-center text-7xl shadow-2xl border-8 border-white dark:border-slate-800 mb-6">
+             <motion.div whileHover={{rotate:10, scale:1.05}} className="w-24 h-24 md:w-32 md:h-32 mx-auto bg-slate-100 dark:bg-slate-900 rounded-full flex items-center justify-center text-6xl md:text-7xl shadow-2xl border-8 border-white dark:border-slate-800 mb-6">
                 {currentAvatar.icon}
              </motion.div>
-             <h3 className={`text-3xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>{userState.name}</h3>
-             <div className="text-indigo-500 font-bold uppercase text-sm tracking-widest mt-2 mb-6">Quiz Explorer</div>
+             <h3 className={`text-2xl md:text-3xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>{userState.name}</h3>
+             <div className="text-indigo-500 font-bold uppercase text-xs md:text-sm tracking-widest mt-2 mb-6">Quiz Explorer</div>
              <button onClick={() => { const name = prompt("Enter new name:", userState.name); if(name) setUserState(p => ({...p, name})); }} className="px-6 py-2 text-sm font-bold rounded-full border-2 border-slate-300 dark:border-slate-600 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 transition hover:text-slate-700 dark:hover:text-white">
                 Edit Name ✏️
              </button>
            </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-6 mb-10">
+        <div className="grid grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-10">
             {[{icon:'⭐', val:masteryCount, label:'Perfect Levels'}, {icon:'🚀', val:`${progressPercent}%`, label:'Game Complete'}, {icon:'🎒', val:Object.values(userState.inventory).reduce((a,b)=>a+b, 0), label:'Items Owned'}, {icon:'🤖', val:`${userState.unlockedAvatars.length}/${AVATARS.length}`, label:'Avatars Unlocked'}].map((stat, i) => (
-                <motion.div initial={{opacity:0, y:20}} animate={{opacity:1, y:0}} transition={{delay: i*0.1}} key={i} className={`p-6 rounded-3xl border-2 shadow-lg ${darkMode ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white/80 border-slate-200/80'}`}>
-                    <div className="text-4xl mb-2 filter drop-shadow-sm">{stat.icon}</div>
-                    <div className={`font-black text-2xl ${darkMode ? 'text-white' : 'text-slate-800'}`}>{stat.val}</div>
-                    <div className="text-xs text-slate-500 font-bold uppercase tracking-wider">{stat.label}</div>
+                <motion.div initial={{opacity:0, y:20}} animate={{opacity:1, y:0}} transition={{delay: i*0.1}} key={i} className={`p-4 md:p-6 rounded-3xl border-2 shadow-lg ${darkMode ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white/80 border-slate-200/80'}`}>
+                    <div className="text-3xl md:text-4xl mb-2 filter drop-shadow-sm">{stat.icon}</div>
+                    <div className={`font-black text-xl md:text-2xl ${darkMode ? 'text-white' : 'text-slate-800'}`}>{stat.val}</div>
+                    <div className="text-[10px] md:text-xs text-slate-500 font-bold uppercase tracking-wider">{stat.label}</div>
                 </motion.div>
             ))}
         </div>
@@ -750,8 +747,8 @@ export default function QuizApp() {
   // 🏁 MAIN RENDER
   // ==========================================
   return (
-    <div className={`min-h-screen w-full flex flex-col items-center justify-start p-6 font-sans transition-colors duration-500 overflow-x-hidden ${darkMode ? 'bg-slate-900 selection:bg-indigo-500/30' : 'bg-slate-50 selection:bg-indigo-200'}`}>
-      {showConfetti && <Confetti recycle={false} numberOfPieces={500} gravity={0.2} />}
+    <div className={`min-h-screen w-full flex flex-col items-center justify-start p-4 md:p-6 font-sans transition-colors duration-500 overflow-x-hidden ${darkMode ? 'bg-slate-900 selection:bg-indigo-500/30' : 'bg-slate-50 selection:bg-indigo-200'}`}>
+      {showConfetti && <Confetti recycle={false} numberOfPieces={width < 600 ? 200 : 500} gravity={0.2} />}
       {renderDailyRewardModal()}
       
       <AnimatePresence mode="wait">
