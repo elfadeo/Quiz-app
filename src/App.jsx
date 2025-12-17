@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-// --- FIREBASE (Optional - Remove if not using) ---
+import React, { useState, useEffect, useRef } from 'react';
+// --- FIREBASE IMPORTS ---
+// Make sure you have a firebase.js file exporting 'db'
 import { db } from './firebase'; 
 import { collection, addDoc, onSnapshot, query, orderBy, limit } from "firebase/firestore";
 
@@ -41,7 +42,6 @@ const playSound = (type) => {
       osc.start(now); osc.stop(now + 0.05);
     },
     buy: () => {
-      // Cash register sound
       osc.type = 'square';
       osc.frequency.setValueAtTime(1200, now);
       osc.frequency.setValueAtTime(1600, now + 0.1);
@@ -194,12 +194,27 @@ export default function QuizApp() {
   
   // --- LEADERBOARD SYNC (Firebase) ---
   const [leaderboard, setLeaderboard] = useState([]);
+  
+  // Listen for score updates in real-time
   useEffect(() => {
     if(db) {
       try {
-        const q = query(collection(db, "scores"), orderBy("score", "desc"), limit(10));
-        return onSnapshot(q, s => setLeaderboard(s.docs.map(d => ({...d.data(), id:d.id}))));
-      } catch(e) {}
+        const q = query(collection(db, "scores"), orderBy("score", "desc"), limit(20));
+        
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+          const scores = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          setLeaderboard(scores);
+        }, (error) => {
+          console.error("Leaderboard error:", error);
+        });
+
+        return () => unsubscribe();
+      } catch(e) {
+        console.log("Firebase sync error or not configured:", e);
+      }
     }
   }, []);
 
@@ -314,16 +329,20 @@ export default function QuizApp() {
       mastery: isMastered ? { ...prev.mastery, [masterKey]: true } : prev.mastery
     }));
 
-    // Save Score to DB
+    // Save Score to DB (ONLY IF CONNECTED)
     if(db && userState.name !== 'Guest') {
+      const calculatedScore = finalScore * 100; // Base score
+      
       addDoc(collection(db, "scores"), {
         player: userState.name,
-        score: finalScore * 100,
+        score: calculatedScore,
         category: game.category,
         level: currLevel,
         avatar: userState.avatar,
         timestamp: new Date().toISOString()
-      }).catch(e=>console.log(e));
+      })
+      .then(() => console.log("Score saved!"))
+      .catch(e => console.error("Error adding score:", e));
     }
 
     setScreen('results');
@@ -385,17 +404,25 @@ export default function QuizApp() {
     return (
       <div className="w-full max-w-5xl animate-fade-in pb-20">
         {/* TOP BAR */}
-        <div className="flex justify-between items-center mb-8 bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/20 shadow-xl">
-          <div className="flex items-center gap-3">
+        <div className={`flex justify-between items-center mb-8 bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/20 shadow-xl ${darkMode ? 'bg-slate-800/80 border-slate-700' : 'bg-white/80 border-white/40'}`}>
+          
+          {/* PROFILE BUTTON */}
+          <button onClick={() => setScreen('profile')} className="flex items-center gap-3 hover:opacity-80 transition text-left">
              <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center text-2xl shadow-lg border-2 border-indigo-400">
                {currentAvatar.icon}
              </div>
              <div>
-               <h2 className={`font-bold text-lg ${darkMode?'text-white':'text-slate-800'}`}>{userState.name}</h2>
-               <div className="text-xs text-slate-500 font-bold uppercase tracking-widest">Mastery: {totalMastery}</div>
+               <h2 className={`font-bold text-lg leading-tight ${darkMode?'text-white':'text-slate-800'}`}>{userState.name}</h2>
+               <div className="text-xs text-slate-500 font-bold uppercase tracking-widest">Profile & Stats</div>
              </div>
-          </div>
+          </button>
+
           <div className="flex items-center gap-4">
+             {/* LEADERBOARD BUTTON */}
+             <button onClick={() => setScreen('leaderboard')} className="p-2 rounded-xl bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 hover:bg-yellow-500 hover:text-white transition">
+                <span className="text-xl">🏆</span>
+             </button>
+
              <div className="flex items-center gap-2 bg-slate-900/50 px-4 py-2 rounded-full border border-yellow-500/30">
                 <Icons.Coin />
                 <span className="font-mono font-bold text-yellow-400 text-lg">{userState.coins}</span>
@@ -445,10 +472,10 @@ export default function QuizApp() {
                           }
                         `}
                       >
-                         <span className="flex items-center gap-2">
-                           {isLocked ? '🔒' : (isMastered ? '⭐' : '⭕')} Level {lvlNum}
-                         </span>
-                         {!isLocked && <span className="text-xs opacity-50">Play</span>}
+                          <span className="flex items-center gap-2">
+                            {isLocked ? '🔒' : (isMastered ? '⭐' : '⭕')} Level {lvlNum}
+                          </span>
+                          {!isLocked && <span className="text-xs opacity-50">Play</span>}
                       </button>
                     )
                   })}
@@ -459,17 +486,11 @@ export default function QuizApp() {
         </div>
         
         {/* SETTINGS AREA */}
-         <div className="mt-8 flex justify-center gap-4">
-             <button onClick={() => setDarkMode(!darkMode)} className="px-6 py-2 rounded-full bg-slate-200 dark:bg-slate-700 font-bold text-slate-600 dark:text-slate-300">
-               {darkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}
-             </button>
-             <button onClick={() => {
-                const name = prompt("Enter Profile Name:", userState.name);
-                if(name) setUserState(p => ({...p, name}));
-             }} className="px-6 py-2 rounded-full bg-slate-200 dark:bg-slate-700 font-bold text-slate-600 dark:text-slate-300">
-               ✏️ Edit Name
-             </button>
-         </div>
+          <div className="mt-8 flex justify-center gap-4">
+              <button onClick={() => setDarkMode(!darkMode)} className="px-6 py-2 rounded-full bg-slate-200 dark:bg-slate-700 font-bold text-slate-600 dark:text-slate-300">
+                {darkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}
+              </button>
+          </div>
       </div>
     );
   };
@@ -541,66 +562,77 @@ export default function QuizApp() {
          <div className="flex justify-between items-center mb-6">
             <div className={`text-sm font-bold uppercase tracking-widest ${darkMode?'text-slate-400':'text-slate-500'}`}>{game.category}</div>
             <div className="flex gap-2">
-               <div className="px-3 py-1 rounded-full bg-orange-100 text-orange-600 font-bold text-xs flex items-center">🔥 {game.streak}</div>
-               <div className={`px-3 py-1 rounded-full font-bold text-xs flex items-center ${game.timeLeft < 10 ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-blue-100 text-blue-600'}`}>
-                  ⏰ {game.frozen ? '❄️' : game.timeLeft}s
-               </div>
+               <div className="px-3 py-1 rounded-full bg-orange-100 text-orange-600 font-bold text-sm">🔥 {game.streak}</div>
+               <div className="px-3 py-1 rounded-full bg-indigo-100 text-indigo-600 font-bold text-sm">Score: {game.score}</div>
             </div>
          </div>
 
-         {/* QUESTION CARD */}
-         <div className={`p-8 rounded-3xl border shadow-2xl mb-6 relative overflow-hidden ${darkMode?'bg-slate-800 border-slate-700':'bg-white border-white/60'}`}>
-             <div className={`absolute top-0 left-0 w-2 h-full bg-gradient-to-b ${THEMES[game.category]}`}></div>
-             <div className="text-xs font-bold text-slate-400 mb-2">Question {game.qIndex + 1} / {game.questions.length}</div>
-             <h2 className={`text-2xl md:text-3xl font-bold leading-tight ${darkMode?'text-white':'text-slate-800'}`}>{q.q}</h2>
+         {/* TIMER BAR */}
+         <div className="w-full h-3 bg-slate-200 rounded-full mb-8 overflow-hidden">
+            <div 
+              className={`h-full transition-all duration-1000 ease-linear ${game.timeLeft < 10 ? 'bg-red-500' : 'bg-green-500'}`} 
+              style={{width: `${(game.timeLeft/30)*100}%`}}
+            ></div>
          </div>
 
-         {/* LIFELINES */}
-         <div className="flex justify-center gap-4 mb-8">
-            <button disabled={!game.activeLifelines.fifty || userState.inventory.fifty <= 0 || feedback} onClick={() => useLifeline('fifty')} className="flex flex-col items-center gap-1 group disabled:opacity-50">
-               <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center text-xl shadow-sm border-2 border-indigo-200 group-hover:-translate-y-1 transition">✂️</div>
-               <span className="text-[10px] font-bold text-slate-400">{userState.inventory.fifty} Left</span>
-            </button>
-            <button disabled={!game.activeLifelines.freeze || userState.inventory.freeze <= 0 || feedback} onClick={() => useLifeline('freeze')} className="flex flex-col items-center gap-1 group disabled:opacity-50">
-               <div className="w-12 h-12 rounded-2xl bg-cyan-100 text-cyan-600 flex items-center justify-center text-xl shadow-sm border-2 border-cyan-200 group-hover:-translate-y-1 transition">❄️</div>
-               <span className="text-[10px] font-bold text-slate-400">{userState.inventory.freeze} Left</span>
-            </button>
+         {/* QUESTION */}
+         <div className={`p-8 rounded-3xl border shadow-xl mb-8 text-center min-h-[200px] flex items-center justify-center ${darkMode?'bg-slate-800 border-slate-700 text-white':'bg-white border-slate-200 text-slate-800'}`}>
+            <h2 className="text-2xl font-bold">{q.q}</h2>
          </div>
 
          {/* OPTIONS */}
-         <div className="space-y-3">
-           {q.o.map((opt, idx) => {
-             if (game.hiddenOptions.includes(idx)) return <div key={idx} className="h-16"></div>; // Invisible placeholder
+         <div className="grid grid-cols-1 gap-3 mb-8">
+            {q.o.map((opt, i) => {
+               if(game.hiddenOptions.includes(i)) return <div key={i} className="h-14"></div>; // Invisible placeholder
 
-             let stateStyle = darkMode ? "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50";
-             
-             if(feedback) {
-               if (idx === feedback.correctIdx) stateStyle = "bg-emerald-500 border-emerald-600 text-white shadow-lg shadow-emerald-500/30";
-               else if (idx === feedback.selectedIdx) stateStyle = "bg-red-500 border-red-600 text-white opacity-50";
-               else stateStyle = "opacity-30 grayscale";
-             }
+               let stateStyle = "";
+               if (feedback) {
+                  if (i === feedback.correctIdx) stateStyle = "bg-green-500 text-white border-green-600";
+                  else if (i === feedback.selectedIdx) stateStyle = "bg-red-500 text-white border-red-600";
+                  else stateStyle = "opacity-50";
+               } else {
+                  stateStyle = darkMode 
+                    ? "bg-slate-800 text-white border-slate-600 hover:bg-slate-700" 
+                    : "bg-white text-slate-800 border-slate-200 hover:bg-slate-50";
+               }
 
-             return (
-               <button 
-                 key={idx} 
-                 disabled={!!feedback}
-                 onClick={() => handleAnswer(idx)}
-                 className={`w-full p-4 rounded-xl border-2 text-left font-bold transition-all transform active:scale-[0.98] ${stateStyle}`}
-               >
-                 {opt}
-               </button>
-             )
-           })}
+               return (
+                 <button 
+                   key={i}
+                   disabled={!!feedback}
+                   onClick={() => handleAnswer(i)}
+                   className={`p-4 rounded-xl border-2 font-bold text-lg transition-all transform active:scale-95 ${stateStyle}`}
+                 >
+                   {opt}
+                 </button>
+               )
+            })}
          </div>
 
-         {/* EXPLANATION */}
+         {/* LIFELINES ROW */}
+         <div className="flex justify-center gap-4">
+             <button 
+               onClick={() => useLifeline('fifty')} 
+               disabled={!game.activeLifelines.fifty || userState.inventory.fifty <= 0 || !!feedback}
+               className="flex flex-col items-center gap-1 disabled:opacity-30"
+             >
+                <div className="w-12 h-12 rounded-full bg-blue-500 text-white flex items-center justify-center text-xl shadow-lg hover:scale-110 transition">✂️</div>
+                <span className="text-xs font-bold text-slate-400">{userState.inventory.fifty}</span>
+             </button>
+             <button 
+               onClick={() => useLifeline('freeze')} 
+               disabled={!game.activeLifelines.freeze || userState.inventory.freeze <= 0 || !!feedback}
+               className="flex flex-col items-center gap-1 disabled:opacity-30"
+             >
+                <div className="w-12 h-12 rounded-full bg-cyan-500 text-white flex items-center justify-center text-xl shadow-lg hover:scale-110 transition">❄️</div>
+                <span className="text-xs font-bold text-slate-400">{userState.inventory.freeze}</span>
+             </button>
+         </div>
+
+         {/* EXPLANATION POPUP */}
          {feedback && (
-           <div className="mt-6 p-4 rounded-xl bg-blue-50 dark:bg-slate-900 border border-blue-100 dark:border-slate-700 flex gap-4 animate-fade-in">
-             <div className="text-2xl">💡</div>
-             <div>
-               <div className="text-xs font-bold uppercase text-blue-400">Fact</div>
-               <div className={`text-sm ${darkMode?'text-slate-300':'text-blue-900'}`}>{feedback.expl}</div>
-             </div>
+           <div className="mt-6 p-4 rounded-xl bg-blue-50 text-blue-800 text-center animate-fade-in border border-blue-200">
+              <span className="font-bold">💡 Fact:</span> {feedback.expl}
            </div>
          )}
       </div>
@@ -608,54 +640,195 @@ export default function QuizApp() {
   };
 
   const renderResults = () => {
-    const percent = Math.round((game.score / game.questions.length) * 100);
-    const passed = percent >= 70;
-    const coinsEarned = game.score * 10; // Simple calc for display
+    return (
+        <div className="max-w-md w-full text-center animate-fade-in pt-10">
+            <div className="text-6xl mb-4">
+                {game.score / game.questions.length >= 0.7 ? '🎉' : '😓'}
+            </div>
+            <h2 className={`text-4xl font-black mb-2 ${darkMode?'text-white':'text-slate-800'}`}>
+                {game.score / game.questions.length >= 0.7 ? 'Level Complete!' : 'Try Again!'}
+            </h2>
+            <p className="text-slate-500 mb-8 font-bold">You scored {game.score} / {game.questions.length}</p>
+
+            <div className="grid grid-cols-2 gap-4 mb-8">
+                <div className="p-4 rounded-2xl bg-yellow-50 border border-yellow-200">
+                    <div className="text-2xl mb-1">🪙</div>
+                    <div className="font-bold text-yellow-700">+{game.score * 10} Coins</div>
+                </div>
+                <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200">
+                    <div className="text-2xl mb-1">🔥</div>
+                    <div className="font-bold text-blue-700">{game.score} XP</div>
+                </div>
+            </div>
+
+            <button onClick={() => setScreen('home')} className="w-full py-4 rounded-xl bg-indigo-600 text-white font-bold text-lg shadow-xl hover:bg-indigo-500 transition mb-4">
+                Back to Home
+            </button>
+            <button onClick={() => startGame(game.category, game.levelIdx)} className="w-full py-4 rounded-xl border-2 border-slate-200 text-slate-500 font-bold hover:bg-slate-50 transition">
+                Replay Level
+            </button>
+        </div>
+    )
+  }
+
+  // ==========================================
+  // 🏆 LEADERBOARD RENDERER (NO MOCK DATA)
+  // ==========================================
+  const renderLeaderboard = () => {
+    // This now ONLY displays data coming from Firebase.
+    // If your Firebase is empty, this list will be empty.
+    const displayData = leaderboard; 
 
     return (
-      <div className="max-w-md w-full text-center animate-fade-in p-8 rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 shadow-2xl">
-         <div className="text-6xl mb-4">{passed ? '🎉' : '💀'}</div>
-         <h2 className={`text-3xl font-bold mb-2 ${passed ? 'text-emerald-500' : 'text-red-500'}`}>{passed ? 'Level Complete!' : 'Mission Failed'}</h2>
-         <div className={`text-6xl font-black mb-6 ${darkMode?'text-white':'text-slate-800'}`}>{percent}%</div>
-         
-         <div className="flex justify-center gap-4 mb-8">
-            <div className="p-4 bg-slate-900/50 rounded-2xl text-yellow-400 min-w-[100px]">
-               <div className="text-xs uppercase opacity-70">Earned</div>
-               <div className="text-xl font-bold">+{coinsEarned} 🪙</div>
-            </div>
-            <div className="p-4 bg-slate-900/50 rounded-2xl text-white min-w-[100px]">
-               <div className="text-xs uppercase opacity-70">Score</div>
-               <div className="text-xl font-bold">{game.score}/{game.questions.length}</div>
-            </div>
-         </div>
+      <div className="max-w-2xl w-full animate-fade-in pb-10">
+        <div className="flex items-center mb-6">
+          <button onClick={() => { playSound('click'); setScreen('home'); }} className="p-2 mr-4 rounded-full bg-slate-200 dark:bg-slate-700 transition hover:scale-105">
+            <Icons.Back />
+          </button>
+          <h2 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>Global Rankings</h2>
+        </div>
 
-         <div className="space-y-3">
-           <button onClick={() => setScreen('home')} className="w-full py-4 rounded-xl bg-indigo-600 text-white font-bold shadow-lg hover:bg-indigo-500 transition">Continue</button>
-           {!passed && <button onClick={() => startGame(game.category, game.levelIdx)} className="w-full py-4 rounded-xl bg-slate-200 text-slate-700 font-bold hover:bg-slate-300 transition">Try Again</button>}
-         </div>
+        <div className={`rounded-3xl border overflow-hidden shadow-xl min-h-[300px] ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+          {/* Table Header */}
+          <div className={`grid grid-cols-12 gap-2 p-4 text-xs font-bold uppercase tracking-widest border-b ${darkMode ? 'bg-slate-900/50 border-slate-700 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+            <div className="col-span-2 text-center">Rank</div>
+            <div className="col-span-6">Player</div>
+            <div className="col-span-4 text-right">Score</div>
+          </div>
+
+          {/* CHECK IF EMPTY */}
+          {displayData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+               <div className="text-4xl mb-2">💤</div>
+               <p className="font-bold">No games played yet.</p>
+               <p className="text-xs mt-1">Play a game to be the first!</p>
+            </div>
+          ) : (
+            <div className="max-h-[60vh] overflow-y-auto">
+              {displayData.map((entry, index) => {
+                const ava = AVATARS.find(a => a.id === entry.avatar) || AVATARS[0];
+                const rankColor = index === 0 ? 'text-yellow-400' : index === 1 ? 'text-slate-400' : index === 2 ? 'text-orange-400' : 'text-slate-500';
+                
+                return (
+                  <div key={entry.id || index} className={`grid grid-cols-12 gap-2 p-4 items-center border-b last:border-0 transition hover:bg-slate-50 dark:hover:bg-slate-700/50 ${darkMode ? 'border-slate-700 text-white' : 'border-slate-100 text-slate-800'}`}>
+                    <div className={`col-span-2 text-center font-black text-xl ${rankColor}`}>
+                      {index + 1}
+                    </div>
+                    <div className="col-span-6 flex items-center gap-3">
+                      <div className="text-2xl">{ava.icon}</div>
+                      <div className="flex flex-col">
+                        <span className="font-bold truncate">{entry.player}</span>
+                        <span className="text-[10px] opacity-60 uppercase">{entry.category || 'General'}</span>
+                      </div>
+                    </div>
+                    <div className="col-span-4 text-right font-mono font-bold text-indigo-500">
+                      {entry.score.toLocaleString()}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
-    )
+    );
   };
 
-  // --- MAIN RENDER ---
-  return (
-    <div className={`min-h-screen font-sans flex flex-col items-center p-4 transition-colors duration-500 overflow-x-hidden ${darkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
-      <style>{`
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
-      `}</style>
-      
-      {/* Background Decor */}
-      <div className={`fixed inset-0 pointer-events-none -z-10 ${darkMode ? 'opacity-20' : 'opacity-100'}`}>
-         <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-indigo-100 to-transparent dark:from-indigo-900/20"></div>
-      </div>
+  // ==========================================
+  // 👤 PROFILE RENDERER
+  // ==========================================
+  const renderProfile = () => {
+    const currentAvatar = AVATARS.find(a => a.id === userState.avatar);
+    
+    // Calculate Stats
+    const totalLevels = Object.keys(campaignData).length * 3;
+    const unlockedCount = Object.values(userState.unlockedLevels).reduce((a, b) => a + b, 0) - Object.keys(campaignData).length; // Subtract base level 1s
+    const progressPercent = Math.round((unlockedCount / (totalLevels - Object.keys(campaignData).length)) * 100) || 0;
+    const masteryCount = Object.keys(userState.mastery).length;
 
-      <div className="w-full flex-1 flex flex-col items-center justify-center pt-8">
-        {screen === 'home' && renderDashboard()}
-        {screen === 'shop' && renderShop()}
-        {screen === 'quiz' && renderQuiz()}
-        {screen === 'results' && renderResults()}
+    const handleReset = () => {
+        if(window.confirm("Are you sure? This deletes all progress, coins, and items permanently.")) {
+            localStorage.removeItem('quizUltraPro');
+            window.location.reload();
+        }
+    };
+
+    return (
+      <div className="max-w-md w-full animate-fade-in pb-10">
+        <div className="flex items-center mb-6">
+          <button onClick={() => { playSound('click'); setScreen('home'); }} className="p-2 mr-4 rounded-full bg-slate-200 dark:bg-slate-700 transition hover:scale-105">
+            <Icons.Back />
+          </button>
+          <h2 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>My Profile</h2>
+        </div>
+
+        {/* Profile Card */}
+        <div className={`relative p-8 rounded-3xl border text-center mb-6 shadow-xl overflow-hidden ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+           <div className={`absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-20`}></div>
+           
+           <div className="relative z-10">
+             <div className="w-24 h-24 mx-auto bg-slate-100 dark:bg-slate-900 rounded-full flex items-center justify-center text-6xl shadow-2xl border-4 border-white dark:border-slate-700 mb-4">
+                {currentAvatar.icon}
+             </div>
+             <h3 className={`text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>{userState.name}</h3>
+             <div className="text-indigo-500 font-bold uppercase text-xs tracking-widest mt-1">Quiz Explorer</div>
+             
+             <button 
+                onClick={() => {
+                   const name = prompt("Enter new name:", userState.name);
+                   if(name) setUserState(p => ({...p, name}));
+                }}
+                className="mt-4 px-4 py-1 text-xs font-bold rounded-full border border-slate-300 dark:border-slate-600 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 transition">
+                Edit Name
+             </button>
+           </div>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 gap-4 mb-8">
+            <div className={`p-4 rounded-2xl border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                <div className="text-3xl mb-1">⭐</div>
+                <div className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-800'}`}>{masteryCount}</div>
+                <div className="text-xs text-slate-500 font-bold uppercase">Perfect Levels</div>
+            </div>
+            <div className={`p-4 rounded-2xl border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                <div className="text-3xl mb-1">🚀</div>
+                <div className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-800'}`}>{progressPercent}%</div>
+                <div className="text-xs text-slate-500 font-bold uppercase">Game Complete</div>
+            </div>
+             <div className={`p-4 rounded-2xl border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                <div className="text-3xl mb-1">🎒</div>
+                <div className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-800'}`}>{Object.values(userState.inventory).reduce((a,b)=>a+b, 0)}</div>
+                <div className="text-xs text-slate-500 font-bold uppercase">Items Owned</div>
+            </div>
+             <div className={`p-4 rounded-2xl border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                <div className="text-3xl mb-1">🤖</div>
+                <div className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-800'}`}>{userState.unlockedAvatars.length}/{AVATARS.length}</div>
+                <div className="text-xs text-slate-500 font-bold uppercase">Avatars Unlocked</div>
+            </div>
+        </div>
+
+        {/* Danger Zone */}
+        <button onClick={handleReset} className="w-full py-3 rounded-xl border border-red-200 text-red-500 hover:bg-red-50 dark:border-red-900/30 dark:hover:bg-red-900/20 font-bold transition">
+            Reset All Progress
+        </button>
       </div>
+    );
+  };
+
+  // ==========================================
+  // 🏁 MAIN RENDER
+  // ==========================================
+  return (
+    <div className={`min-h-screen w-full flex flex-col items-center justify-start p-6 font-sans transition-colors duration-500 ${darkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
+      
+      {screen === 'home' && renderDashboard()}
+      {screen === 'shop' && renderShop()}
+      {screen === 'quiz' && renderQuiz()}
+      {screen === 'results' && renderResults()}
+      {screen === 'leaderboard' && renderLeaderboard()}
+      {screen === 'profile' && renderProfile()}
+
     </div>
   );
 }
