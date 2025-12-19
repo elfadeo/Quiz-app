@@ -713,7 +713,7 @@ export default function QuizApp() {
         setShowRewardModal(true);
         playSound('reward');
     }
-  }, []);
+  }, [userState.lastRewardDate, screen]); // ✅ Re-check when these change
 
   const claimDailyReward = () => {
       setUserState(prev => ({
@@ -828,11 +828,17 @@ export default function QuizApp() {
     const finalScore = game.score + (lastCorrect ? 1 : 0);
     const total = game.questions.length;
     const percent = (finalScore / total) * 100;
-    const currLevel = game.levelIdx + 1;
+    const currLevel = game.levelIdx + 1; // 1, 2, or 3
     const unlocked = userState.unlockedLevels[game.category] || 1;
-    let newUnlocked = unlocked;
     
-    if (percent >= 70 && currLevel === unlocked && currLevel < 3) newUnlocked = unlocked + 1;
+    // ✅ FIXED: Only unlock next level if current level is unlocked AND less than 3
+    let newUnlocked = unlocked;
+    if (percent >= 70 && currLevel === unlocked && unlocked < 3) {
+        newUnlocked = unlocked + 1;
+    }
+    
+    // ✅ ENSURE IT NEVER EXCEEDS 3
+    newUnlocked = Math.min(newUnlocked, 3);
 
     const isMastered = percent === 100;
     if (isMastered) {
@@ -844,17 +850,25 @@ export default function QuizApp() {
 
     setUserState(prev => ({
       ...prev,
-      unlockedLevels: { ...prev.unlockedLevels, [game.category]: newUnlocked },
+      unlockedLevels: { 
+          ...prev.unlockedLevels, 
+          [game.category]: newUnlocked  // ✅ Now capped at 3
+      },
       mastery: isMastered ? { ...prev.mastery, [`${game.category}_${currLevel}`]: true } : prev.mastery
     }));
 
     if(db && userState.name !== 'Guest') {
       addDoc(collection(db, "scores"), {
-        player: userState.name, score: finalScore * 100, category: game.category, level: currLevel, avatar: userState.avatar, timestamp: new Date().toISOString()
+        player: userState.name, 
+        score: finalScore * 100, 
+        category: game.category, 
+        level: currLevel, 
+        avatar: userState.avatar, 
+        timestamp: new Date().toISOString()
       }).catch(e => console.error(e));
     }
     setScreen('results');
-  };
+};
 
   const useLifeline = (type) => {
     if (!game.activeLifelines[type] || userState.inventory[type] <= 0 || feedback) return;
@@ -921,7 +935,9 @@ export default function QuizApp() {
              </div>
              <div>
                <h2 className={`font-bold text-lg md:text-xl leading-tight ${darkMode?'text-white':'text-slate-800'}`}>{userState.name}</h2>
-               <div className={`text-[10px] md:text-xs font-bold uppercase tracking-widest ${darkMode?'text-indigo-300':'text-indigo-500'}`}>Lv. {Object.values(userState.unlockedLevels).reduce((a,b)=>a+b,0)} Explorer</div>
+               <div className={`text-[10px] md:text-xs font-bold uppercase tracking-widest ${darkMode?'text-indigo-300':'text-indigo-500'}`}>
+                  Lv. {Math.max(...Object.values(userState.unlockedLevels))} Explorer
+                </div>
              </div>
           </button>
 
