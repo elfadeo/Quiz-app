@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from "framer-motion";
 import Confetti from 'react-confetti';
-import { useWindowSize } from 'react-use'; 
+import { useWindowSize } from 'react-use';
+import VersionReset from './VersionReset';
 
 // --- FIREBASE IMPORTS (Keep your existing config) ---
 import { db } from './firebase'; 
@@ -1294,6 +1295,11 @@ export default function QuizApp() {
   // ==========================================
   return (
     <div className={`min-h-screen w-full flex flex-col items-center justify-start p-4 md:p-6 font-sans transition-colors duration-500 overflow-x-hidden ${darkMode ? 'bg-slate-900 selection:bg-indigo-500/30' : 'bg-slate-50 selection:bg-indigo-200'}`}>
+      
+      {/* 👇 ADD THIS LINE HERE 👇 */}
+      <VersionReset />
+      {/* 👆 IT RUNS SILENTLY IN THE BACKGROUND 👆 */}
+
       {showConfetti && <Confetti recycle={false} numberOfPieces={width < 600 ? 200 : 500} gravity={0.2} />}
       {renderDailyRewardModal()}
       
